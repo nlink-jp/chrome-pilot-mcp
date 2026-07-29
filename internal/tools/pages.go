@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
@@ -216,17 +217,34 @@ func (m *Manager) navigateSession(ctx context.Context, sessionID, url string, ti
 	}
 }
 
+// waitFor blocks until a condition holds on the selected page.
+//
+// The condition is either text appearing in the page, or a CSS selector
+// reaching a state. Waiting for an element to appear or (just as often) to
+// go away — a spinner, an overlay — is the common need in automation that
+// text matching alone cannot express.
 func (m *Manager) waitFor(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
-		Text    string `json:"text"`
-		Timeout int    `json:"timeout"`
+		Text     string `json:"text"`
+		Selector string `json:"selector"`
+		State    string `json:"state"`
+		Timeout  int    `json:"timeout"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
 	}
-	if args.Text == "" {
-		return nil, toolerr.New(toolerr.CodeMissingArgument, "text is required")
+	if args.Text == "" && args.Selector == "" {
+		return nil, toolerr.New(toolerr.CodeMissingArgument, "one of text or selector is required")
 	}
+	if args.Text != "" && args.Selector != "" {
+		return nil, toolerr.New(toolerr.CodeInvalidArguments, "text and selector are mutually exclusive")
+	}
+
+	expr, describe, err := waitExpression(args.Text, args.Selector, args.State)
+	if err != nil {
+		return nil, err
+	}
+
 	p, err := m.selectedPage(ctx)
 	if err != nil {
 		return nil, err
@@ -234,19 +252,23 @@ func (m *Manager) waitFor(ctx context.Context, raw json.RawMessage) (any, error)
 
 	timeout := timeoutFromMS(args.Timeout, defaultWaitForTimeout)
 	deadline := time.Now().Add(timeout)
-	textJSON, _ := json.Marshal(args.Text)
-	expr := fmt.Sprintf("!!document.body && document.body.innerText.includes(%s)", textJSON)
-
 	for {
-		found, err := m.evalBool(ctx, p.sessionID, expr)
+		ok, err := m.evalBool(ctx, p.sessionID, expr)
 		if err != nil {
 			return nil, err
 		}
-		if found {
-			return map[string]any{"found": true, "text": args.Text}, nil
+		if ok {
+			out := map[string]any{"found": true}
+			if args.Text != "" {
+				out["text"] = args.Text
+			} else {
+				out["selector"] = args.Selector
+				out["state"] = describe
+			}
+			return out, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, toolerr.Newf(toolerr.CodeTimeout, "text %q did not appear within %s", args.Text, timeout)
+			return nil, toolerr.Newf(toolerr.CodeTimeout, "%s within %s", describeTimeout(args.Text, args.Selector, describe), timeout)
 		}
 		select {
 		case <-time.After(waitForPollInterval):
@@ -254,6 +276,45 @@ func (m *Manager) waitFor(ctx context.Context, raw json.RawMessage) (any, error)
 			return nil, mapErr(ctx.Err())
 		}
 	}
+}
+
+// waitStates maps the selector states to the JS predicate that decides them.
+// "visible"/"hidden" consider layout, so an element rendered with
+// display:none counts as hidden even though it is present in the DOM.
+var waitStates = map[string]string{
+	"visible": `(() => { const e = document.querySelector(SEL); if (!e) return false;
+		const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 &&
+		getComputedStyle(e).visibility !== 'hidden' })()`,
+	"hidden": `(() => { const e = document.querySelector(SEL); if (!e) return true;
+		const r = e.getBoundingClientRect(); return !(r.width > 0 && r.height > 0) ||
+		getComputedStyle(e).visibility === 'hidden' })()`,
+	"present": `!!document.querySelector(SEL)`,
+	"absent":  `!document.querySelector(SEL)`,
+}
+
+// waitExpression builds the polled predicate and a human description.
+func waitExpression(text, selector, state string) (expr, describe string, err error) {
+	if text != "" {
+		textJSON, _ := json.Marshal(text)
+		return fmt.Sprintf("!!document.body && document.body.innerText.includes(%s)", textJSON), "text", nil
+	}
+	if state == "" {
+		state = "visible"
+	}
+	tmpl, ok := waitStates[state]
+	if !ok {
+		return "", "", toolerr.Newf(toolerr.CodeInvalidArguments,
+			"state must be visible, hidden, present, or absent (got %q)", state)
+	}
+	selJSON, _ := json.Marshal(selector)
+	return strings.ReplaceAll(tmpl, "SEL", string(selJSON)), state, nil
+}
+
+func describeTimeout(text, selector, state string) string {
+	if text != "" {
+		return fmt.Sprintf("text %q did not appear", text)
+	}
+	return fmt.Sprintf("selector %q did not become %s", selector, state)
 }
 
 func (m *Manager) evalBool(ctx context.Context, sessionID, expr string) (bool, error) {

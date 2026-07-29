@@ -72,11 +72,13 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "wait_for",
-		Description: "Waits until the given text appears on the selected page.",
+		Description: "Waits until text appears on the selected page, or until a CSS selector reaches a state (visible, hidden, present, absent). Use the selector form to wait for a spinner or overlay to go away.",
 		InputSchema: schema(`{"type":"object","properties":{
-			"text":{"type":"string","description":"Text to wait for."},
+			"text":{"type":"string","description":"Text to wait for. Mutually exclusive with selector."},
+			"selector":{"type":"string","description":"CSS selector to wait on, e.g. \".spinner\"."},
+			"state":{"type":"string","enum":["visible","hidden","present","absent"],"description":"State the selector must reach. Default visible."},
 			"timeout":{"type":"integer","description":"Timeout in milliseconds. Default 15000."}
-		},"required":["text"]}`),
+		}}`),
 	}, wrap(m.waitFor))
 
 	s.RegisterTool(mcpserver.Tool{
@@ -213,11 +215,12 @@ func registerInputTools(s *mcpserver.Server, m *Manager) {
 func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "list_console_messages",
-		Description: "Lists console messages (log/warn/error and uncaught exceptions) recorded on the selected page.",
+		Description: "Lists console messages (log/warn/error and uncaught exceptions) recorded on the selected page. Returns lastMsgId; pass it back as sinceMsgId to see only what appeared since.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"pageSize":{"type":"integer","description":"Maximum number of messages to return. When omitted, returns all."},
 			"pageIdx":{"type":"integer","description":"Page number to return (0-based)."},
-			"types":{"type":"array","items":{"type":"string"},"description":"Filter by message types, e.g. [\"error\"]."}
+			"types":{"type":"array","items":{"type":"string"},"description":"Filter by message types, e.g. [\"error\"]."},
+			"sinceMsgId":{"type":"integer","description":"Only return messages with a msgid greater than this (use the lastMsgId from a previous call)."}
 		}}`),
 	}, wrap(m.listConsoleMessages))
 
@@ -231,11 +234,13 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "list_network_requests",
-		Description: "Lists network requests recorded on the selected page.",
+		Description: "Lists network requests recorded on the selected page. Returns lastReqId; pass it back as sinceReqId to see only what happened since.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"pageSize":{"type":"integer","description":"Maximum number of requests to return. When omitted, returns all."},
 			"pageIdx":{"type":"integer","description":"Page number to return (0-based)."},
-			"resourceTypes":{"type":"array","items":{"type":"string"},"description":"Filter by resource types, e.g. [\"XHR\",\"Fetch\"]."}
+			"resourceTypes":{"type":"array","items":{"type":"string"},"description":"Filter by resource types, e.g. [\"XHR\",\"Fetch\"]."},
+			"sinceReqId":{"type":"integer","description":"Only return requests with a reqid greater than this (use the lastReqId from a previous call)."},
+			"failedOnly":{"type":"boolean","description":"Only return requests that failed or returned status >= 400."}
 		}}`),
 	}, wrap(m.listNetworkRequests))
 

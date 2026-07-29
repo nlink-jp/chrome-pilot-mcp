@@ -16,6 +16,8 @@ func (m *Manager) listNetworkRequests(ctx context.Context, raw json.RawMessage) 
 		PageSize      int      `json:"pageSize"`
 		PageIdx       int      `json:"pageIdx"`
 		ResourceTypes []string `json:"resourceTypes"`
+		SinceReqID    int      `json:"sinceReqId"`
+		FailedOnly    bool     `json:"failedOnly"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
@@ -39,16 +41,29 @@ func (m *Manager) listNetworkRequests(ctx context.Context, raw json.RawMessage) 
 
 	m.col.mu.Lock()
 	var reqs []*netRequest
+	lastID := 0
 	for _, r := range m.col.netReqs {
-		if r.sessionID == p.sessionID && typeOK(r.ResourceType) {
-			reqs = append(reqs, r)
+		if r.sessionID != p.sessionID {
+			continue
 		}
+		if r.ID > lastID {
+			lastID = r.ID
+		}
+		if r.ID <= args.SinceReqID || !typeOK(r.ResourceType) {
+			continue
+		}
+		// failedOnly narrows to the requests that actually went wrong —
+		// including the ones the host filter blocked.
+		if args.FailedOnly && r.Failed == "" && r.Status < 400 {
+			continue
+		}
+		reqs = append(reqs, r)
 	}
 	m.col.mu.Unlock()
 
 	total := len(reqs)
 	reqs = paginate(reqs, args.PageSize, args.PageIdx)
-	return map[string]any{"total": total, "requests": reqs}, nil
+	return map[string]any{"total": total, "requests": reqs, "lastReqId": lastID}, nil
 }
 
 func (m *Manager) getNetworkRequest(ctx context.Context, raw json.RawMessage) (any, error) {

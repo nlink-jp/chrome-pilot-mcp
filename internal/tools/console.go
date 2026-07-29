@@ -9,9 +9,10 @@ import (
 
 func (m *Manager) listConsoleMessages(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
-		PageSize int      `json:"pageSize"`
-		PageIdx  int      `json:"pageIdx"`
-		Types    []string `json:"types"`
+		PageSize   int      `json:"pageSize"`
+		PageIdx    int      `json:"pageIdx"`
+		Types      []string `json:"types"`
+		SinceMsgID int      `json:"sinceMsgId"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
@@ -35,16 +36,28 @@ func (m *Manager) listConsoleMessages(ctx context.Context, raw json.RawMessage) 
 
 	m.col.mu.Lock()
 	var msgs []*consoleMsg
+	lastID := 0
 	for _, msg := range m.col.consoleMsgs {
-		if msg.sessionID == p.sessionID && typeOK(msg.Type) {
-			msgs = append(msgs, msg)
+		if msg.sessionID != p.sessionID {
+			continue
 		}
+		if msg.ID > lastID {
+			lastID = msg.ID
+		}
+		// sinceMsgId lets an agent ask only for what appeared after a
+		// previous call, instead of re-reading the whole buffer.
+		if msg.ID <= args.SinceMsgID || !typeOK(msg.Type) {
+			continue
+		}
+		msgs = append(msgs, msg)
 	}
 	m.col.mu.Unlock()
 
 	total := len(msgs)
 	msgs = paginate(msgs, args.PageSize, args.PageIdx)
-	return map[string]any{"total": total, "messages": msgs}, nil
+	// lastMsgId is what to pass as sinceMsgId next time, even when the
+	// filters matched nothing.
+	return map[string]any{"total": total, "messages": msgs, "lastMsgId": lastID}, nil
 }
 
 func (m *Manager) getConsoleMessage(ctx context.Context, raw json.RawMessage) (any, error) {
