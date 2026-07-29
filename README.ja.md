@@ -38,6 +38,17 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
 
 - 要素系ツールは `take_snapshot` (a11y ツリー) が返す `uid` で要素を指定
   します。新しいスナップショットを取ると古い uid は無効になります。
+  アクセシブル名を持たないクリック可能要素 (アイコンのみのボタン、空の
+  クリック領域) は a11y ツリーに現れないため、DOM から回収してツリーの
+  下に別枠で列挙します。
+- 操作が `alert`/`confirm`/`prompt` を開いた場合、ページは処理されるまで
+  停止します。ツールはダイアログの種類とメッセージを付けて即座に戻るので、
+  `handle_dialog` で続行してください。
+- `wait_for` は `text` か、`selector` + `state`
+  (`visible` / `hidden` / `present` / `absent`) のどちらかを取ります。
+- `list_console_messages` / `list_network_requests` は `lastMsgId` /
+  `lastReqId` を返します。これを `sinceMsgId` / `sinceReqId` として渡すと
+  前回以降の分だけ取得できます。
 - `take_screenshot` は workspace に保存しつつ、小さければ画像を inline
   でも返します。`screencast_stop` は Go 標準ライブラリのみでアニメーション
   GIF を合成します。

@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.2.0] - 2026-07-30
+
+Everything here came out of driving v0.1.0 as a real MCP client.
+
+### Fixed
+
+- **Clickable elements the accessibility tree omits are now reachable.**
+  An element with a click handler but no text, aria-label or role (an
+  icon-only button, an empty click target) never appears in
+  `Accessibility.getFullAXTree`, so `take_snapshot` never showed it and no
+  uid could address it. A DOM pass now recovers those elements in three
+  CDP calls and lists them below the tree
+- **A click that opens a dialog no longer looks like a failure.**
+  alert/confirm/prompt block the renderer, so the CDP call that triggered
+  one never replies and the click came back as a 30s timeout even though
+  it had worked. Input dispatch and `evaluate_script` now return as soon
+  as the dialog opens, reporting it and pointing at `handle_dialog`
+  (0.13s instead of 30s)
+- **Resizing during a screencast no longer discards the recording.**
+  Frames that did not match the first frame's size were dropped, so a
+  resize mid-recording left a single-frame GIF. Frames are composited onto
+  the largest frame's canvas instead, and the result reports
+  `refittedFrames`
+
+### Added
+
+- `wait_for` accepts `selector` plus `state` (`visible`, `hidden`,
+  `present`, `absent`) alongside the existing text matching — waiting for
+  a spinner to disappear no longer needs a text proxy
+- `list_console_messages` and `list_network_requests` return `lastMsgId` /
+  `lastReqId` and accept `sinceMsgId` / `sinceReqId`, so a step can ask
+  only for what happened since the previous call
+- `list_network_requests` gains `failedOnly` (failures and status >= 400)
+- `screencast_start` gains `maxFrames` and `maxDurationMs`; memory is
+  bounded by bytes rather than a frame count, and a truncated recording
+  reports which limit stopped it
+- `screencast_stop` reports the output `width`/`height`
+
 ## [0.1.0] - 2026-07-29
 
 Initial release. A zero-dependency Chrome automation MCP server: a single
@@ -39,4 +77,5 @@ directly and driving the Chrome you already have installed.
   on an ephemeral port, or `--attach`ed to an existing loopback endpoint.
   Nothing is downloaded at run time
 
+[0.2.0]: https://github.com/nlink-jp/chrome-pilot-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nlink-jp/chrome-pilot-mcp/releases/tag/v0.1.0

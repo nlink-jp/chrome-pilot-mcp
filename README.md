@@ -38,6 +38,17 @@ Notable behaviors:
 
 - Element tools address elements by the `uid`s from `take_snapshot`
   (accessibility tree); each new snapshot invalidates previous uids.
+  Elements that are clickable but carry no accessible name — icon-only
+  buttons, empty click targets — are not in that tree, so they are
+  recovered from the DOM and listed separately under it.
+- When an action opens an `alert`/`confirm`/`prompt`, the page freezes
+  until it is handled. The tool returns immediately with the dialog's
+  type and message; call `handle_dialog` to continue.
+- `wait_for` takes either `text` or a `selector` with a `state`
+  (`visible`, `hidden`, `present`, `absent`).
+- `list_console_messages` / `list_network_requests` return `lastMsgId` /
+  `lastReqId`; pass them back as `sinceMsgId` / `sinceReqId` to fetch only
+  what happened since.
 - `take_screenshot` saves to the workspace and returns the image inline
   when small enough; `screencast_stop` writes an animated GIF assembled
   entirely with the Go standard library.

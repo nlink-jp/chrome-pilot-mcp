@@ -8,9 +8,10 @@ speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
 d'être: eliminate npm supply-chain risk — single static binary, `go.mod`
 with no `require`, nothing downloaded at runtime.
 
-**Current stage: released (v0.1.0), 27/27 tools.** All tools verified E2E
+**Current stage: released (v0.2.0), 27/27 tools.** All tools verified E2E
 against real headless Chrome, plus config.toml, profile persistence, and
-host-filter enforcement.
+host-filter enforcement. v0.2.0 came entirely out of using v0.1.0 as an
+MCP client — see the CHANGELOG for what that turned up.
 
 Design background: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`) and
 the ADRs — 0001 host allow/block lists, 0002 config.toml, 0003 browser
@@ -79,3 +80,9 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   clobber a configured setting. Never search `./config.toml` (ADR-0002).
 - Host filtering must stay startup-only: no tool may widen it at run
   time, or a prompt-injected agent could unlock itself.
+- Any CDP call that can trigger a JS dialog must go through
+  `callGuarded` (dialogguard.go): alert/confirm/prompt block the renderer,
+  so an unguarded call waits out its whole timeout on a successful action.
+- The accessibility tree is not the whole page. Unnamed clickable elements
+  only reach the agent through the DOM pass in extranodes.go; keep the
+  uid map able to hold a nodeId as well as a backendNodeId.
