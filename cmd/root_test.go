@@ -31,10 +31,11 @@ func TestVersionFlagAndSubcommandAgree(t *testing.T) {
 	}
 }
 
-// TestServeEmptyToolset drives the default serve path end-to-end over
+// TestServeListsTools drives the default serve path end-to-end over
 // in-memory stdio: initialize must answer with the server identity, and
-// tools/list must return an empty (non-null) tool array at scaffold stage.
-func TestServeEmptyToolset(t *testing.T) {
+// tools/list must include the registered tools. No browser is launched —
+// the connection is lazy, so this runs without Chrome.
+func TestServeListsTools(t *testing.T) {
 	stdin := strings.NewReader(strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
@@ -50,8 +51,22 @@ func TestServeEmptyToolset(t *testing.T) {
 	if !strings.Contains(out, `"name":"chrome-pilot-mcp"`) {
 		t.Errorf("initialize response missing server name: %s", out)
 	}
-	if !strings.Contains(out, `"tools":[]`) {
-		t.Errorf("tools/list should return an empty array at scaffold stage: %s", out)
+	for _, tool := range []string{"list_pages", "new_page", "navigate_page", "take_snapshot", "take_screenshot", "evaluate_script", "wait_for"} {
+		if !strings.Contains(out, `"name":"`+tool+`"`) {
+			t.Errorf("tools/list missing %s: %s", tool, out)
+		}
+	}
+}
+
+func TestParseViewport(t *testing.T) {
+	w, h, err := parseViewport("1280x800")
+	if err != nil || w != 1280 || h != 800 {
+		t.Errorf("parseViewport(1280x800) = %d,%d,%v", w, h, err)
+	}
+	for _, bad := range []string{"1280", "x", "0x100", "-1x5", "axb"} {
+		if _, _, err := parseViewport(bad); err == nil {
+			t.Errorf("parseViewport(%q) should fail", bad)
+		}
 	}
 }
 

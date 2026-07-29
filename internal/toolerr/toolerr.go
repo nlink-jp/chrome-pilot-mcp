@@ -67,6 +67,7 @@ const (
 	CodeDialogNotOpen       = "dialog_not_open"
 	CodeScreencastNotActive = "screencast_not_active"
 	CodeCDPError            = "cdp_error"
+	CodeScriptFailed        = "script_failed"
 	CodeTimeout             = "timeout"
 	CodeWorkspaceFailed     = "workspace_failed"
 )

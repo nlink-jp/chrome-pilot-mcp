@@ -12,8 +12,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/mcpserver"
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/tools"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/transport"
 )
 
@@ -46,6 +49,12 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("chrome-pilot-mcp", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	showVersion := fs.Bool("version", false, "print version and exit")
+	headless := fs.Bool("headless", false, "launch Chrome headless")
+	channel := fs.String("channel", "stable", "Chrome channel to launch: stable|beta|dev|canary")
+	execPath := fs.String("executable-path", "", "explicit Chrome binary (overrides --channel)")
+	attach := fs.String("attach", "", "attach to an existing Chrome debugging endpoint (ws://..., port, or host:port; loopback only) instead of launching")
+	workspaceRoot := fs.String("workspace-root", "", "output directory for screenshots etc. (default: a fresh temp dir)")
+	viewport := fs.String("viewport", "", "initial viewport as WxH, e.g. 1280x800")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -53,16 +62,49 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, Version)
 		return 0
 	}
-	return serve(stdin, stdout, stderr)
+
+	cfg := tools.Config{
+		Headless:       *headless,
+		Channel:        *channel,
+		ExecutablePath: *execPath,
+		Attach:         *attach,
+		WorkspaceRoot:  *workspaceRoot,
+	}
+	if *viewport != "" {
+		w, h, err := parseViewport(*viewport)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		cfg.ViewportWidth, cfg.ViewportHeight = w, h
+	}
+	return serve(cfg, stdin, stdout, stderr)
 }
 
-func serve(stdin io.Reader, stdout, stderr io.Writer) int {
+// parseViewport parses "WxH".
+func parseViewport(s string) (int, int, error) {
+	ws, hs, ok := strings.Cut(s, "x")
+	if !ok {
+		return 0, 0, fmt.Errorf("--viewport must be WxH, e.g. 1280x800 (got %q)", s)
+	}
+	w, err1 := strconv.Atoi(ws)
+	h, err2 := strconv.Atoi(hs)
+	if err1 != nil || err2 != nil || w <= 0 || h <= 0 {
+		return 0, 0, fmt.Errorf("--viewport must be WxH with positive integers (got %q)", s)
+	}
+	return w, h, nil
+}
+
+func serve(cfg tools.Config, stdin io.Reader, stdout, stderr io.Writer) int {
 	// MCP owns stdout; all logging goes to stderr.
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	tr := transport.NewStdioTransport(stdin, stdout)
 	srv := mcpserver.New("chrome-pilot-mcp", Version, tr, logger)
-	// Tool registration lands with the CDP client layer (development
-	// Phase 1); the scaffold serves an empty tool set.
+
+	m := tools.NewManager(cfg)
+	defer m.Shutdown()
+	tools.RegisterAll(srv, m)
+
 	if err := srv.Serve(context.Background()); err != nil {
 		logger.Error("serve", "err", err)
 		return 1
