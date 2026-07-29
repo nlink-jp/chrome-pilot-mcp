@@ -51,6 +51,8 @@ channel         = "stable"     # stable | beta | dev | canary
 executable_path = ""
 attach          = ""           # ws://... | port | host:port (loopback only)
 viewport        = "1280x800"
+profile         = ""           # named persistent profile (ADR-0003)
+user_data_dir   = ""           # explicit path (ADR-0003; exclusive with profile)
 
 [workspace]
 root = ""                      # empty = temp dir

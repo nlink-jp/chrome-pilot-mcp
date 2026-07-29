@@ -51,6 +51,8 @@ channel         = "stable"     # stable | beta | dev | canary
 executable_path = ""
 attach          = ""           # ws://... | port | host:port (loopback のみ)
 viewport        = "1280x800"
+profile         = ""           # 名前付き永続プロファイル (ADR-0003)
+user_data_dir   = ""           # 明示パス (ADR-0003; profile と排他)
 
 [workspace]
 root = ""                      # 空 = 一時ディレクトリ
