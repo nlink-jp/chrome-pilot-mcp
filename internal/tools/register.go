@@ -272,18 +272,20 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "screencast_start",
-		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop).",
+		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop). A viewport change mid-recording is fine: frames are refitted rather than dropped.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"filePath":{"type":"string","description":"Output .gif path. Defaults to the workspace."},
 			"maxWidth":{"type":"integer","description":"Max frame width in px. Default 800."},
 			"everyNthFrame":{"type":"integer","description":"Capture every Nth frame. Default 2."},
-			"quality":{"type":"integer","description":"JPEG capture quality 0-100. Default 70."}
+			"quality":{"type":"integer","description":"JPEG capture quality 0-100. Default 70."},
+			"maxFrames":{"type":"integer","description":"Stop collecting after this many frames. Default 600."},
+			"maxDurationMs":{"type":"integer","description":"Stop collecting after this much wall-clock time. Unlimited by default."}
 		}}`),
 	}, wrap(m.screencastStart))
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "screencast_stop",
-		Description: "Stops the recording and writes the animated GIF; returns its path, frame count, and duration.",
+		Description: "Stops the recording and writes the animated GIF; returns its path, size, frame count, duration, and whether the recording was truncated by a limit.",
 		InputSchema: schema(`{"type":"object","properties":{}}`),
 	}, wrap(m.screencastStop))
 }

@@ -76,6 +76,14 @@ type screencastState struct {
 	filePath string
 	frames   []screencastFrame
 	dropped  int
+	bytes    int
+
+	// Limits, applied as frames arrive.
+	maxFrames     int
+	maxBytes      int
+	maxDurationMS int
+	// limitHit names the limit that first stopped capture, for the report.
+	limitHit string
 }
 
 func (c *collectors) init() {

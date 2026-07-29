@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
 	"image/color/palette"
 	"image/draw"
 	"image/gif"
@@ -28,6 +29,11 @@ const (
 	defaultScreencastNthFrame = 2
 	defaultScreencastQuality  = 70
 	minGIFDelayCS             = 2 // GIF delay unit is 1/100s; browsers clamp below this
+
+	// defaultScreencastMaxBytes bounds the frames held in memory. A frame
+	// budget alone is a poor limit because frame size varies by an order of
+	// magnitude with viewport and quality.
+	defaultScreencastMaxBytes = 128 << 20
 )
 
 // handleScreencastFrame stores one frame and acks it. Called from the CDP
@@ -47,12 +53,23 @@ func (m *Manager) handleScreencastFrame(sessionID string, params json.RawMessage
 	m.col.mu.Lock()
 	sc := m.col.screencasts[sessionID]
 	if sc != nil && sc.active {
-		if len(sc.frames) < maxScreencastFrame {
-			if img, err := base64.StdEncoding.DecodeString(p.Data); err == nil {
-				sc.frames = append(sc.frames, screencastFrame{data: img, timestamp: p.Metadata.Timestamp})
-			}
-		} else {
+		img, decErr := base64.StdEncoding.DecodeString(p.Data)
+		switch {
+		case decErr != nil:
 			sc.dropped++
+		case sc.maxFrames > 0 && len(sc.frames) >= sc.maxFrames:
+			sc.dropped++
+			sc.limitHit = "maxFrames"
+		case sc.bytes+len(img) > sc.maxBytes:
+			sc.dropped++
+			sc.limitHit = "memory budget"
+		case sc.maxDurationMS > 0 && len(sc.frames) > 0 &&
+			(p.Metadata.Timestamp-sc.frames[0].timestamp)*1000 > float64(sc.maxDurationMS):
+			sc.dropped++
+			sc.limitHit = "maxDurationMs"
+		default:
+			sc.frames = append(sc.frames, screencastFrame{data: img, timestamp: p.Metadata.Timestamp})
+			sc.bytes += len(img)
 		}
 	}
 	m.col.mu.Unlock()
@@ -72,6 +89,8 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 		MaxWidth      int    `json:"maxWidth"`
 		EveryNthFrame int    `json:"everyNthFrame"`
 		Quality       int    `json:"quality"`
+		MaxFrames     int    `json:"maxFrames"`
+		MaxDurationMS int    `json:"maxDurationMs"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
@@ -90,7 +109,17 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 		m.col.mu.Unlock()
 		return nil, toolerr.New(toolerr.CodeInvalidArguments, "a screencast is already recording on this page; call screencast_stop first")
 	}
-	m.col.screencasts[p.sessionID] = &screencastState{active: true, filePath: args.FilePath}
+	maxFrames := args.MaxFrames
+	if maxFrames <= 0 {
+		maxFrames = maxScreencastFrame
+	}
+	m.col.screencasts[p.sessionID] = &screencastState{
+		active:        true,
+		filePath:      args.FilePath,
+		maxFrames:     maxFrames,
+		maxBytes:      defaultScreencastMaxBytes,
+		maxDurationMS: args.MaxDurationMS,
+	}
 	m.col.mu.Unlock()
 
 	maxWidth := args.MaxWidth
@@ -143,6 +172,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	sc.active = false
 	frames := sc.frames
 	dropped := sc.dropped
+	limitHit := sc.limitHit
 	filePath := sc.filePath
 	delete(m.col.screencasts, p.sessionID)
 	m.col.mu.Unlock()
@@ -166,7 +196,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "create output dir: %v", err)
 	}
 
-	g, skipped, durationMS, err := assembleGIF(frames)
+	g, stats, err := assembleGIF(frames)
 	if err != nil {
 		return nil, err
 	}
@@ -182,46 +212,86 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	out := map[string]any{
 		"path":       filePath,
 		"frames":     len(g.Image),
-		"durationMs": durationMS,
+		"durationMs": stats.durationMS,
+		"width":      g.Config.Width,
+		"height":     g.Config.Height,
 	}
 	if dropped > 0 {
 		out["droppedFrames"] = dropped
 	}
-	if skipped > 0 {
-		out["skippedFrames"] = skipped
+	if stats.skipped > 0 {
+		out["undecodableFrames"] = stats.skipped
+	}
+	if stats.refitted > 0 {
+		// The viewport changed mid-recording; say so rather than leaving
+		// the agent to wonder about the letterboxing in the output.
+		out["refittedFrames"] = stats.refitted
+		out["note"] = "the viewport changed during recording; frames of other sizes were drawn into the largest frame's canvas"
+	}
+	if limitHit != "" {
+		out["truncated"] = limitHit
+		out["truncationNote"] = "recording stopped collecting frames when the " + limitHit + " limit was reached"
 	}
 	return out, nil
 }
 
+// gifStats reports what assembleGIF did with the captured frames.
+type gifStats struct {
+	skipped    int // undecodable frames
+	refitted   int // frames whose size differed from the canvas
+	durationMS int
+}
+
 // assembleGIF decodes JPEG frames, quantizes them to a 256-color palette
 // with Floyd–Steinberg dithering, and derives per-frame delays from the
-// capture timestamps. Frames whose size differs from the first frame are
-// skipped (viewport changed mid-recording).
-func assembleGIF(frames []screencastFrame) (*gif.GIF, int, int, error) {
-	g := &gif.GIF{}
-	skipped := 0
-	var bounds image.Rectangle
+// capture timestamps.
+//
+// A recording may span a viewport change (resize_page, emulate), which
+// changes the frame size mid-stream. Earlier versions dropped every frame
+// that did not match the first one, so resizing during a recording silently
+// reduced it to a single frame. The canvas is now the largest frame seen
+// and smaller frames are drawn into it, so nothing is lost.
+func assembleGIF(frames []screencastFrame) (*gif.GIF, gifStats, error) {
+	var stats gifStats
+
+	// Pass 1: header-only decode to size the canvas. Decoding every frame
+	// up front would hold hundreds of full bitmaps in memory at once.
+	canvas := image.Rectangle{}
+	for _, fr := range frames {
+		cfg, err := jpeg.DecodeConfig(bytes.NewReader(fr.data))
+		if err != nil {
+			continue // counted as skipped in pass 2
+		}
+		canvas = canvas.Union(image.Rect(0, 0, cfg.Width, cfg.Height))
+	}
+	if canvas.Empty() {
+		return nil, stats, toolerr.New(toolerr.CodeScreencastNotActive, "no decodable frames captured")
+	}
+
+	g := &gif.GIF{Config: image.Config{
+		ColorModel: color.Palette(palette.Plan9),
+		Width:      canvas.Dx(),
+		Height:     canvas.Dy(),
+	}}
 	var timestamps []float64
 
+	// Pass 2: decode and draw one frame at a time.
 	for _, fr := range frames {
 		img, err := jpeg.Decode(bytes.NewReader(fr.data))
 		if err != nil {
-			skipped++
+			stats.skipped++
 			continue
 		}
-		if len(g.Image) == 0 {
-			bounds = img.Bounds()
-		} else if !img.Bounds().Eq(bounds) {
-			skipped++
-			continue
+		if !img.Bounds().Eq(canvas) {
+			stats.refitted++
 		}
-		pm := image.NewPaletted(bounds, palette.Plan9)
-		draw.FloydSteinberg.Draw(pm, bounds, img, image.Point{})
+		pm := image.NewPaletted(canvas, palette.Plan9)
+		draw.FloydSteinberg.Draw(pm, img.Bounds().Intersect(canvas), img, image.Point{})
 		g.Image = append(g.Image, pm)
 		timestamps = append(timestamps, fr.timestamp)
 	}
 	if len(g.Image) == 0 {
-		return nil, skipped, 0, toolerr.New(toolerr.CodeScreencastNotActive, "no decodable frames captured")
+		return nil, stats, toolerr.New(toolerr.CodeScreencastNotActive, "no decodable frames captured")
 	}
 
 	// Delays: gap to the next frame, in centiseconds; the last frame reuses
@@ -240,5 +310,6 @@ func assembleGIF(frames []screencastFrame) (*gif.GIF, int, int, error) {
 		g.Delay = append(g.Delay, delay)
 		total += delay
 	}
-	return g, skipped, total * 10, nil
+	stats.durationMS = total * 10
+	return g, stats, nil
 }

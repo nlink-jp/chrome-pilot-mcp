@@ -629,6 +629,140 @@ func TestScreencastGIF(t *testing.T) {
 	waitUntil(t, "frame acks", func() bool { return f.callCount("Page.screencastFrameAck") == 2 })
 }
 
+// TestScreencastRefitsResizedFrames is the regression for the behavior
+// found in real use: resizing the viewport mid-recording dropped every
+// later frame, leaving a one-frame GIF.
+func TestScreencastRefitsResizedFrames(t *testing.T) {
+	f := newFakeChrome(t, "about:blank")
+	ws := t.TempDir()
+	m := newTestManager(t, Config{WorkspaceRoot: ws}, f)
+
+	if _, err := callTool(t, m.screencastStart, `{}`); err != nil {
+		t.Fatalf("screencast_start: %v", err)
+	}
+	// Small frame, then two frames from a larger viewport.
+	for i, fr := range [][]byte{
+		encodeTestJPEG(t, 20, 10, color.RGBA{255, 0, 0, 255}),
+		encodeTestJPEG(t, 40, 30, color.RGBA{0, 255, 0, 255}),
+		encodeTestJPEG(t, 40, 30, color.RGBA{0, 0, 255, 255}),
+	} {
+		f.emit("sess-T1", "Page.screencastFrame", map[string]any{
+			"data": base64.StdEncoding.EncodeToString(fr), "sessionId": i + 1,
+			"metadata": map[string]any{"timestamp": 100.0 + float64(i)/2},
+		})
+	}
+	waitUntil(t, "frames stored", func() bool {
+		m.col.mu.Lock()
+		defer m.col.mu.Unlock()
+		sc := m.col.screencasts["sess-T1"]
+		return sc != nil && len(sc.frames) == 3
+	})
+
+	out, err := callTool(t, m.screencastStop, `{}`)
+	if err != nil {
+		t.Fatalf("screencast_stop: %v", err)
+	}
+	res := out.(map[string]any)
+	if res["frames"] != 3 {
+		t.Errorf("frames = %v, want all 3 kept", res["frames"])
+	}
+	if res["refittedFrames"] != 1 {
+		t.Errorf("refittedFrames = %v, want 1 (the small first frame)", res["refittedFrames"])
+	}
+	if res["width"] != 40 || res["height"] != 30 {
+		t.Errorf("canvas = %vx%v, want the largest frame 40x30", res["width"], res["height"])
+	}
+	if note, _ := res["note"].(string); !strings.Contains(note, "viewport changed") {
+		t.Errorf("note should explain the refit: %q", note)
+	}
+
+	gf, err := os.Open(res["path"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gf.Close()
+	g, err := gif.DecodeAll(gf)
+	if err != nil {
+		t.Fatalf("decode gif: %v", err)
+	}
+	if len(g.Image) != 3 {
+		t.Errorf("gif has %d frames, want 3", len(g.Image))
+	}
+	for i, img := range g.Image {
+		if b := img.Bounds(); b.Dx() != 40 || b.Dy() != 30 {
+			t.Errorf("frame %d bounds = %v, want the shared 40x30 canvas", i, b)
+		}
+	}
+}
+
+func TestScreencastMaxFrames(t *testing.T) {
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+
+	if _, err := callTool(t, m.screencastStart, `{"maxFrames":2}`); err != nil {
+		t.Fatalf("screencast_start: %v", err)
+	}
+	for i := range 5 {
+		f.emit("sess-T1", "Page.screencastFrame", map[string]any{
+			"data":      base64.StdEncoding.EncodeToString(encodeTestJPEG(t, 20, 10, color.RGBA{byte(i * 50), 0, 0, 255})),
+			"sessionId": i + 1,
+			"metadata":  map[string]any{"timestamp": 100.0 + float64(i)},
+		})
+	}
+	waitUntil(t, "frames dropped", func() bool {
+		m.col.mu.Lock()
+		defer m.col.mu.Unlock()
+		sc := m.col.screencasts["sess-T1"]
+		return sc != nil && sc.dropped >= 3
+	})
+
+	out, err := callTool(t, m.screencastStop, `{}`)
+	if err != nil {
+		t.Fatalf("screencast_stop: %v", err)
+	}
+	res := out.(map[string]any)
+	if res["frames"] != 2 {
+		t.Errorf("frames = %v, want the 2 allowed", res["frames"])
+	}
+	if res["truncated"] != "maxFrames" {
+		t.Errorf("truncated = %v, want maxFrames", res["truncated"])
+	}
+	if res["droppedFrames"] != 3 {
+		t.Errorf("droppedFrames = %v, want 3", res["droppedFrames"])
+	}
+}
+
+func TestScreencastMaxDuration(t *testing.T) {
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+
+	if _, err := callTool(t, m.screencastStart, `{"maxDurationMs":1000}`); err != nil {
+		t.Fatalf("screencast_start: %v", err)
+	}
+	// Timestamps are seconds: 0s, 0.5s (kept) then 2s (past the 1s budget).
+	for i, ts := range []float64{100.0, 100.5, 102.0} {
+		f.emit("sess-T1", "Page.screencastFrame", map[string]any{
+			"data":      base64.StdEncoding.EncodeToString(encodeTestJPEG(t, 20, 10, color.RGBA{0, byte(i * 60), 0, 255})),
+			"sessionId": i + 1,
+			"metadata":  map[string]any{"timestamp": ts},
+		})
+	}
+	waitUntil(t, "late frame dropped", func() bool {
+		m.col.mu.Lock()
+		defer m.col.mu.Unlock()
+		sc := m.col.screencasts["sess-T1"]
+		return sc != nil && sc.dropped == 1
+	})
+
+	out, err := callTool(t, m.screencastStop, `{}`)
+	if err != nil {
+		t.Fatalf("screencast_stop: %v", err)
+	}
+	if res := out.(map[string]any); res["truncated"] != "maxDurationMs" {
+		t.Errorf("truncated = %v, want maxDurationMs", res["truncated"])
+	}
+}
+
 func TestScreencastRejectsNonGIFPath(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
 	m := newTestManager(t, Config{}, f)
