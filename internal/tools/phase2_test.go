@@ -272,6 +272,12 @@ func TestPressKeyModifierSuppressesText(t *testing.T) {
 	if keys[0].params["modifiers"] != 2.0 {
 		t.Errorf("modifiers = %v, want 2", keys[0].params["modifiers"])
 	}
+	// Synthetic CDP keys bypass browser shortcut handling; select-all only
+	// works when the edit command is sent explicitly.
+	cmds, _ := keys[0].params["commands"].([]any)
+	if len(cmds) != 1 || cmds[0] != "selectAll" {
+		t.Errorf("Control+A commands = %v, want [selectAll]", keys[0].params["commands"])
+	}
 }
 
 func TestUploadFile(t *testing.T) {

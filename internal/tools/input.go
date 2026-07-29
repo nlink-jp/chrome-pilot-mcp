@@ -549,6 +549,32 @@ func parseKeyCombo(combo string) (int, keyDef, error) {
 	return mods, keyDef{key: ch, code: "Key" + upper, keyCode: int(upper[0]), text: ch}, nil
 }
 
+// editCommands maps modifier shortcuts to the browser edit command that a
+// real key press would trigger. CDP's synthetic key events bypass the
+// browser's shortcut handling, so without the explicit `commands` field
+// Control/Meta+A would not select anything (found by E2E on macOS).
+func editCommands(mods int, key string) []string {
+	if mods&(2|4) == 0 { // needs Control or Meta
+		return nil
+	}
+	switch strings.ToLower(key) {
+	case "a":
+		return []string{"selectAll"}
+	case "c":
+		return []string{"copy"}
+	case "v":
+		return []string{"paste"}
+	case "x":
+		return []string{"cut"}
+	case "z":
+		return []string{"undo"}
+	case "y":
+		return []string{"redo"}
+	default:
+		return nil
+	}
+}
+
 // pressKeyCombo dispatches keyDown+keyUp for a combo like "Control+A".
 func (m *Manager) pressKeyCombo(ctx context.Context, sessionID, combo string) error {
 	mods, def, err := parseKeyCombo(combo)
@@ -559,6 +585,9 @@ func (m *Manager) pressKeyCombo(ctx context.Context, sessionID, combo string) er
 		"type": "rawKeyDown", "modifiers": mods,
 		"key": def.key, "code": def.code,
 		"windowsVirtualKeyCode": def.keyCode, "nativeVirtualKeyCode": def.keyCode,
+	}
+	if cmds := editCommands(mods, def.key); cmds != nil {
+		down["commands"] = cmds
 	}
 	// Plain printable keys (no Control/Meta) produce text.
 	if def.text != "" && mods&(2|4) == 0 {
