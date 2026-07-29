@@ -1,8 +1,7 @@
 # chrome-pilot-mcp
 
-> **Status: 機能実装完了・リリース前。** 全 27 ツールを実装し、実 Chrome
-> での end-to-end 検証済み。v0.1.0 までの残作業はリリースパッケージング。
-> 設計の背景は [RFP](docs/ja/chrome-pilot-mcp-rfp.ja.md) を参照してください。
+設計の背景は [RFP](docs/ja/chrome-pilot-mcp-rfp.ja.md) と
+[ADR](docs/ja/adr/) を参照してください。
 
 [English](README.md)
 

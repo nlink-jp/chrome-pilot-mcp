@@ -1,8 +1,7 @@
 # chrome-pilot-mcp
 
-> **Status: feature-complete, pre-release.** All 27 tools are implemented
-> and verified end-to-end against a real Chrome. Remaining before v0.1.0:
-> release packaging. Design background: [RFP](docs/en/chrome-pilot-mcp-rfp.md).
+Design background: [RFP](docs/en/chrome-pilot-mcp-rfp.md) and the
+[ADRs](docs/en/adr/).
 
 [日本語](README.ja.md)
 
