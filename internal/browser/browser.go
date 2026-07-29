@@ -30,7 +30,10 @@ type Options struct {
 	Headless       bool
 	Channel        string // stable (default) | beta | dev | canary
 	ExecutablePath string // explicit binary; overrides Channel
-	UserDataDir    string // empty → fresh temp dir, removed on Close
+	// Profile selection (ADR-0003): both empty → fresh temp dir removed on
+	// Close; Profile → managed persistent profile; UserDataDir → that path.
+	Profile     string
+	UserDataDir string
 }
 
 // Browser is a launched or attached Chrome.
@@ -65,15 +68,21 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 		}
 	}
 
-	userDataDir := opts.UserDataDir
-	tempProfile := false
-	if userDataDir == "" {
+	userDataDir, persistent, err := resolveProfile(opts.Profile, opts.UserDataDir)
+	if err != nil {
+		return nil, err
+	}
+	tempProfile := !persistent
+	if persistent {
+		if err := os.MkdirAll(userDataDir, 0o700); err != nil {
+			return nil, fmt.Errorf("browser: create profile dir: %w", err)
+		}
+	} else {
 		dir, err := os.MkdirTemp("", "chrome-pilot-mcp-profile-*")
 		if err != nil {
 			return nil, fmt.Errorf("browser: create profile dir: %w", err)
 		}
 		userDataDir = dir
-		tempProfile = true
 	}
 
 	args := buildArgs(userDataDir, opts.Headless)
@@ -89,7 +98,7 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 		return nil, fmt.Errorf("browser: start %s: %w", exe, err)
 	}
 
-	wsURL, err := awaitEndpoint(ctx, stderr)
+	wsURL, err := awaitEndpoint(ctx, stderr, userDataDir)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
@@ -109,7 +118,7 @@ func Launch(ctx context.Context, opts Options) (*Browser, error) {
 	}, nil
 }
 
-func awaitEndpoint(ctx context.Context, stderr io.Reader) (string, error) {
+func awaitEndpoint(ctx context.Context, stderr io.Reader, userDataDir string) (string, error) {
 	type result struct {
 		url string
 		err error
@@ -130,7 +139,15 @@ func awaitEndpoint(ctx context.Context, stderr io.Reader) (string, error) {
 				tail = tail[1:]
 			}
 		}
-		ch <- result{err: fmt.Errorf("browser: Chrome exited before printing a DevTools endpoint; stderr tail:\n%s", strings.Join(tail, "\n"))}
+		joined := strings.Join(tail, "\n")
+		// A profile already held by another Chrome is the common failure
+		// once persistent profiles are in play; say so instead of dumping
+		// raw stderr (ADR-0003).
+		if hint := singletonHint(joined, userDataDir); hint != "" {
+			ch <- result{err: fmt.Errorf("browser: %s", hint)}
+			return
+		}
+		ch <- result{err: fmt.Errorf("browser: Chrome exited before printing a DevTools endpoint; stderr tail:\n%s", joined)}
 	}()
 
 	select {

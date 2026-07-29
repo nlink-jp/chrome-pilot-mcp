@@ -1,6 +1,6 @@
 # ADR-0001: ホスト allow/block リストによるナビゲーション制限
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-29
 - Driver: magi
 - Generalises to: nlink-jp の他ブラウザ/ネットワーク系ツール

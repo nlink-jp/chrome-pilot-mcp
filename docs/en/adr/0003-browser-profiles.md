@@ -1,6 +1,6 @@
 # ADR-0003: Browser profile selection and isolation
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-29
 - Driver: magi
 - Depends on: ADR-0002 (config.toml schema)

@@ -236,6 +236,9 @@ func (m *Manager) handleCollectorEvent(method, sessionID string, params json.Raw
 
 	case "Page.screencastFrame":
 		m.handleScreencastFrame(sessionID, params)
+
+	case "Fetch.requestPaused":
+		m.handleRequestPaused(sessionID, params)
 	}
 }
 

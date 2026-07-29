@@ -1,6 +1,6 @@
 # ADR-0003: ブラウザプロファイルの指定とアイソレーション
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-29
 - Driver: magi
 - Depends on: ADR-0002 (config.toml スキーマ)

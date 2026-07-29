@@ -3,6 +3,9 @@ package cmd
 import (
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -55,6 +58,78 @@ func TestServeListsTools(t *testing.T) {
 		if !strings.Contains(out, `"name":"`+tool+`"`) {
 			t.Errorf("tools/list missing %s: %s", tool, out)
 		}
+	}
+}
+
+// TestFlagsOverrideConfig pins the ADR-0002 precedence: an explicitly
+// given flag wins, while an unset flag must not clobber the file value
+// with its zero value.
+func TestFlagsOverrideConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	body := `
+[browser]
+headless = true
+channel  = "beta"
+viewport = "800x600"
+profile  = "work"
+
+[security]
+allow_hosts = ["example.com"]
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := buildConfig([]string{"--config", path, "--channel", "dev", "--allow-hosts", "other.test,*.other.test"})
+	if err != nil {
+		t.Fatalf("buildConfig: %v", err)
+	}
+
+	// Overridden by flags.
+	if cfg.Channel != "dev" {
+		t.Errorf("channel = %q, want the flag value dev", cfg.Channel)
+	}
+	if !slices.Equal(cfg.AllowHosts, []string{"other.test", "*.other.test"}) {
+		t.Errorf("allow_hosts = %v, want the flag list", cfg.AllowHosts)
+	}
+	// Untouched by flags → file values survive.
+	if !cfg.Headless {
+		t.Errorf("headless from config was lost")
+	}
+	if cfg.ViewportWidth != 800 || cfg.ViewportHeight != 600 {
+		t.Errorf("viewport = %dx%d, want 800x600 from config", cfg.ViewportWidth, cfg.ViewportHeight)
+	}
+	if cfg.Profile != "work" {
+		t.Errorf("profile = %q, want work from config", cfg.Profile)
+	}
+}
+
+func TestMissingExplicitConfigIsError(t *testing.T) {
+	_, err := buildConfig([]string{"--config", filepath.Join(t.TempDir(), "nope.toml")})
+	if err == nil {
+		t.Errorf("explicit --config with a missing file must fail")
+	}
+}
+
+func TestConflictingProfileOptions(t *testing.T) {
+	tests := [][]string{
+		{"--profile", "work", "--user-data-dir", "/tmp/x"},
+		{"--attach", "9222", "--profile", "work"},
+		{"--attach", "9222", "--user-data-dir", "/tmp/x"},
+	}
+	for _, args := range tests {
+		if _, err := buildConfig(args); err == nil {
+			t.Errorf("%v should be rejected", args)
+		}
+	}
+}
+
+func TestSplitList(t *testing.T) {
+	if got := splitList("a.test, b.test ,,c.test"); !slices.Equal(got, []string{"a.test", "b.test", "c.test"}) {
+		t.Errorf("splitList = %v", got)
+	}
+	if got := splitList("  "); len(got) != 0 {
+		t.Errorf("blank list = %v, want empty", got)
 	}
 }
 

@@ -51,6 +51,11 @@ func (m *Manager) newPage(ctx context.Context, raw json.RawMessage) (any, error)
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
 	}
+	if args.URL != "" {
+		if err := m.filter.checkURL(args.URL); err != nil {
+			return nil, err
+		}
+	}
 	if err := m.ensure(ctx); err != nil {
 		return nil, err
 	}
@@ -170,6 +175,9 @@ func (m *Manager) navigatePage(ctx context.Context, raw json.RawMessage) (any, e
 	}
 	if args.URL == "" {
 		return nil, toolerr.New(toolerr.CodeMissingArgument, "url is required")
+	}
+	if err := m.filter.checkURL(args.URL); err != nil {
+		return nil, err
 	}
 	p, err := m.selectedPage(ctx)
 	if err != nil {

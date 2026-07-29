@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,7 +23,8 @@ import (
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/ws"
 )
 
-// Config is the server-level configuration from CLI flags.
+// Config is the server-level configuration (CLI flags merged over
+// config.toml — see ADR-0002).
 type Config struct {
 	Headless       bool
 	Channel        string
@@ -30,6 +33,15 @@ type Config struct {
 	WorkspaceRoot  string
 	ViewportWidth  int
 	ViewportHeight int
+
+	// Profile selection (ADR-0003). Empty both → ephemeral temp profile.
+	Profile     string
+	UserDataDir string
+
+	// Host restrictions (ADR-0001).
+	AllowHosts []string
+	BlockHosts []string
+	BlockLocal bool
 }
 
 // defaultCallTimeout bounds a single CDP call issued by a tool.
@@ -45,7 +57,9 @@ type pageState struct {
 
 // Manager owns the CDP connection and page/session bookkeeping.
 type Manager struct {
-	cfg Config
+	cfg    Config
+	filter hostFilter
+	logger *slog.Logger
 
 	// connect is injectable for tests; production wiring launches/attaches
 	// Chrome and dials its WebSocket endpoint.
@@ -88,8 +102,8 @@ type waiterKey struct {
 }
 
 // NewManager creates a Manager with production wiring.
-func NewManager(cfg Config) *Manager {
-	m := &Manager{cfg: cfg}
+func NewManager(cfg Config, logger *slog.Logger) *Manager {
+	m := &Manager{cfg: cfg, logger: logger}
 	m.connect = m.productionConnect
 	m.init()
 	return m
@@ -103,6 +117,10 @@ func newManagerWithConnect(cfg Config, connect func(ctx context.Context) (*cdp.C
 }
 
 func (m *Manager) init() {
+	if m.logger == nil {
+		m.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	m.filter = newHostFilter(m.cfg)
 	m.pageEnabled = make(map[string]bool)
 	m.uids = make(map[string]uidTarget)
 	m.waiters = make(map[waiterKey][]chan json.RawMessage)
@@ -121,6 +139,8 @@ func (m *Manager) productionConnect(ctx context.Context) (*cdp.Client, *browser.
 			Headless:       m.cfg.Headless,
 			Channel:        m.cfg.Channel,
 			ExecutablePath: m.cfg.ExecutablePath,
+			Profile:        m.cfg.Profile,
+			UserDataDir:    m.cfg.UserDataDir,
 		})
 	}
 	if err != nil {
@@ -308,6 +328,9 @@ func (m *Manager) attachPageLocked(ctx context.Context, p *pageState) error {
 			return err
 		}
 		if err := m.client.Call(ctx, p.sessionID, "Network.enable", nil, nil); err != nil {
+			return err
+		}
+		if err := m.enableFetchGuardLocked(ctx, p.sessionID); err != nil {
 			return err
 		}
 		if m.cfg.ViewportWidth > 0 && m.cfg.ViewportHeight > 0 {

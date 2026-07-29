@@ -159,7 +159,8 @@ func (f *fakeChrome) builtin(method, sessionID string, params map[string]any) (a
 		"Input.dispatchMouseEvent", "Input.dispatchKeyEvent", "Input.insertText",
 		"DOM.scrollIntoViewIfNeeded", "DOM.setFileInputFiles",
 		"Page.handleJavaScriptDialog", "Page.startScreencast", "Page.stopScreencast",
-		"Page.screencastFrameAck":
+		"Page.screencastFrameAck",
+		"Fetch.enable", "Fetch.continueRequest", "Fetch.failRequest":
 		return map[string]any{}, ""
 	case "DOM.getBoxModel":
 		// A 20x20 content box centered on (100, 50).

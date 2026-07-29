@@ -1,6 +1,6 @@
 # ADR-0002: config.toml support (in-house TOML subset loader)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-29
 - Driver: magi
 - Supersedes: RFP §2 Configuration "CLI flags only"
