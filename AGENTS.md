@@ -8,11 +8,11 @@ speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
 d'être: eliminate npm supply-chain risk — single static binary, `go.mod`
 with no `require`, nothing downloaded at runtime.
 
-**Current stage: Phase 1 core implemented.** 9 tools work E2E against real
-Chrome: list/new/select/close/navigate_page, wait_for, evaluate_script,
-take_snapshot, take_screenshot. Remaining: input (10), console (2),
-network (2), emulation (2), screencast GIF (2).
-Full plan: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`).
+**Current stage: feature-complete (27/27 tools), pre-release.** All tools
+verified E2E against real headless Chrome (13-check scenario: click, fill,
+select-all+type, dialog, console, network, dark-mode emulation, GIF
+screencast, screenshot). Remaining before v0.1.0: release packaging.
+Design background: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`).
 
 ## Build & test
 
@@ -35,6 +35,8 @@ internal/ws/                # in-house RFC 6455 client (ws:// loopback only)
 internal/cdp/               # CDP client: id correlation, sessions, events
 internal/browser/           # Chrome launch/attach, executable discovery
 internal/tools/             # Manager (page/session state) + tool handlers
+                            #   pages/debug/input/console/network/emulation/
+                            #   screencast; collectors.go = passive event state
 scripts/                    # codesign/notarize/brew (shared org scripts)
 docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 ```
@@ -59,3 +61,9 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   `--headless`); run it before any release.
 - The browser connects lazily on the first tool call — initialize and
   tools/list must keep working without Chrome installed.
+- Event collectors (collectors.go) run on the CDP read loop: they must
+  never issue CDP calls or take m.mu — collector state has its own mutex.
+  The screencast frame ack is the one CDP call triggered by an event; it
+  goes through a goroutine for that reason.
+- Control/Meta key combos must carry CDP `commands` (e.g. selectAll):
+  synthetic key events bypass browser shortcut handling. See editCommands.

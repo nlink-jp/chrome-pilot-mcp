@@ -1,9 +1,8 @@
 # chrome-pilot-mcp
 
-> **Status: in development (Phase 1 core implemented).** Page navigation,
-> a11y snapshot, screenshot, script evaluation, and wait_for work against a
-> real Chrome. Input, console, network, emulation, and screencast tools are
-> next. See the [RFP](docs/en/chrome-pilot-mcp-rfp.md) for the full plan.
+> **Status: feature-complete, pre-release.** All 27 tools are implemented
+> and verified end-to-end against a real Chrome. Remaining before v0.1.0:
+> release packaging. Design background: [RFP](docs/en/chrome-pilot-mcp-rfp.md).
 
 [日本語](README.ja.md)
 
@@ -25,17 +24,28 @@ is built for environments where that is unacceptable:
 - **Drives your installed Chrome** — launches it with a dedicated profile
   bound to `127.0.0.1`, or attaches to an existing debugging endpoint
 
-## Tool surface (27 tools planned)
+## Tool surface (27 tools)
 
-| Category | Tools | Status |
-|---|---|---|
-| Pages (6) | `list_pages` / `new_page` / `select_page` / `close_page` / `navigate_page` / `wait_for` | ✅ implemented |
-| Debugging (3 of 5) | `take_snapshot` / `take_screenshot` / `evaluate_script` | ✅ implemented |
-| Debugging (rest) | `list_console_messages` / `get_console_message` | planned |
-| Input (10) | `click` / `click_at` / `drag` / `fill` / `fill_form` / `hover` / `press_key` / `type_text` / `upload_file` / `handle_dialog` | planned |
-| Network (2) | `list_network_requests` / `get_network_request` | planned |
-| Emulation (2) | `emulate` / `resize_page` | planned |
-| Screencast (2) | `screencast_start` / `screencast_stop` (animated GIF) | planned |
+| Category | Tools |
+|---|---|
+| Pages (6) | `list_pages` / `new_page` / `select_page` / `close_page` / `navigate_page` / `wait_for` |
+| Input (10) | `click` / `click_at` / `drag` / `fill` / `fill_form` / `hover` / `press_key` / `type_text` / `upload_file` / `handle_dialog` |
+| Debugging (5) | `take_snapshot` / `take_screenshot` / `evaluate_script` / `list_console_messages` / `get_console_message` |
+| Network (2) | `list_network_requests` / `get_network_request` |
+| Emulation (2) | `emulate` / `resize_page` |
+| Screencast (2) | `screencast_start` / `screencast_stop` (animated GIF) |
+
+Notable behaviors:
+
+- Element tools address elements by the `uid`s from `take_snapshot`
+  (accessibility tree); each new snapshot invalidates previous uids.
+- `take_screenshot` saves to the workspace and returns the image inline
+  when small enough; `screencast_stop` writes an animated GIF assembled
+  entirely with the Go standard library.
+- `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
+  simulated.
+- Console and network capture starts when a page is first touched by a
+  tool (domains are enabled on attach).
 
 Tool names and argument schemas follow the upstream so agents can reuse
 existing usage patterns. Lighthouse audits, performance insights, heap

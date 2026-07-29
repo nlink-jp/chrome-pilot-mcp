@@ -4,6 +4,13 @@
 
 ### Added
 
+- Phase 2 tools, completing the 27-tool surface: input
+  (`click`, `click_at`, `drag`, `fill`, `fill_form`, `hover`, `press_key`,
+  `type_text`, `upload_file`, `handle_dialog`), console
+  (`list_console_messages`, `get_console_message`), network
+  (`list_network_requests`, `get_network_request`), emulation
+  (`emulate`, `resize_page`), and screencast
+  (`screencast_start`, `screencast_stop`) with stdlib animated-GIF assembly
 - Phase 1 core tools: `list_pages`, `new_page`, `select_page`, `close_page`,
   `navigate_page`, `wait_for`, `evaluate_script`, `take_snapshot` (a11y uid
   tree with char budget), `take_screenshot` (workspace file + inline image

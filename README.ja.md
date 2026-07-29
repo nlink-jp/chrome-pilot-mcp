@@ -1,9 +1,8 @@
 # chrome-pilot-mcp
 
-> **Status: 開発中 (Phase 1 コア実装済み)。** ページ操作・a11y スナップ
-> ショット・スクリーンショット・スクリプト評価・wait_for が実 Chrome で
-> 動作します。入力・console・network・emulation・screencast は今後実装。
-> 全体計画は [RFP](docs/ja/chrome-pilot-mcp-rfp.ja.md) を参照してください。
+> **Status: 機能実装完了・リリース前。** 全 27 ツールを実装し、実 Chrome
+> での end-to-end 検証済み。v0.1.0 までの残作業はリリースパッケージング。
+> 設計の背景は [RFP](docs/ja/chrome-pilot-mcp-rfp.ja.md) を参照してください。
 
 [English](README.md)
 
@@ -25,17 +24,28 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
 - **インストール済み Chrome を操縦** — 専用プロファイル + `127.0.0.1` bind で
   起動、または既存の debugging endpoint にアタッチ
 
-## ツール一覧 (計画 27)
+## ツール一覧 (27)
 
-| カテゴリ | ツール | 状態 |
-|---|---|---|
-| ページ操作 (6) | `list_pages` / `new_page` / `select_page` / `close_page` / `navigate_page` / `wait_for` | ✅ 実装済み |
-| デバッグ (5 のうち 3) | `take_snapshot` / `take_screenshot` / `evaluate_script` | ✅ 実装済み |
-| デバッグ (残り) | `list_console_messages` / `get_console_message` | 予定 |
-| 入力 (10) | `click` / `click_at` / `drag` / `fill` / `fill_form` / `hover` / `press_key` / `type_text` / `upload_file` / `handle_dialog` | 予定 |
-| ネットワーク (2) | `list_network_requests` / `get_network_request` | 予定 |
-| エミュレーション (2) | `emulate` / `resize_page` | 予定 |
-| スクリーンキャスト (2) | `screencast_start` / `screencast_stop` (アニメーション GIF) | 予定 |
+| カテゴリ | ツール |
+|---|---|
+| ページ操作 (6) | `list_pages` / `new_page` / `select_page` / `close_page` / `navigate_page` / `wait_for` |
+| 入力 (10) | `click` / `click_at` / `drag` / `fill` / `fill_form` / `hover` / `press_key` / `type_text` / `upload_file` / `handle_dialog` |
+| デバッグ (5) | `take_snapshot` / `take_screenshot` / `evaluate_script` / `list_console_messages` / `get_console_message` |
+| ネットワーク (2) | `list_network_requests` / `get_network_request` |
+| エミュレーション (2) | `emulate` / `resize_page` |
+| スクリーンキャスト (2) | `screencast_start` / `screencast_stop` (アニメーション GIF) |
+
+主な挙動:
+
+- 要素系ツールは `take_snapshot` (a11y ツリー) が返す `uid` で要素を指定
+  します。新しいスナップショットを取ると古い uid は無効になります。
+- `take_screenshot` は workspace に保存しつつ、小さければ画像を inline
+  でも返します。`screencast_stop` は Go 標準ライブラリのみでアニメーション
+  GIF を合成します。
+- `drag` はマウスイベントベースです (HTML5 dragstart/drop ベースの UI は
+  シミュレートしません)。
+- console / network の記録は、ツールがページに最初に触れた時点から
+  始まります (attach 時にドメインを有効化)。
 
 ツール名と引数スキーマは上流に準拠し、エージェントが既存の使い方をそのまま
 流用できるようにします。Lighthouse 監査・performance insight・heap snapshot
