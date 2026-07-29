@@ -1,0 +1,64 @@
+# chrome-pilot-mcp configuration example
+#
+# Copy to ~/.config/chrome-pilot-mcp/config.toml, or pass it explicitly
+# with --config /path/to/config.toml. The working directory is never
+# searched (ADR-0002). CLI flags override anything set here.
+#
+# Supported syntax is a TOML subset: [section] headers, key = value,
+# # comments, basic "strings", integers, true/false, and single-line
+# arrays of strings. Unknown keys and unsupported syntax are errors.
+
+[browser]
+# Run without a visible window.
+headless = false
+
+# Chrome channel to launch: stable | beta | dev | canary
+channel = "stable"
+
+# Explicit Chrome binary; overrides `channel` when set.
+executable_path = ""
+
+# Attach to an already-running Chrome instead of launching one.
+# Accepts "ws://127.0.0.1:9222/devtools/browser/<id>", "9222", or
+# "127.0.0.1:9222". Loopback only. Cannot be combined with profile /
+# user_data_dir.
+attach = ""
+
+# Initial viewport, "<width>x<height>".
+viewport = "1280x800"
+
+# Named persistent profile, kept under
+# ~/.config/chrome-pilot-mcp/profiles/<name> (macOS: ~/Library/Application
+# Support/...). Letters, digits, _ and - only. Leave both this and
+# user_data_dir empty for a fresh throwaway profile every run.
+#
+# NOTE: a persistent profile accumulates logins and cookies. Treat the
+# directory as sensitive: do not back it up to shared storage.
+profile = ""
+
+# Explicit user-data-dir. Mutually exclusive with `profile`. Pointing this
+# at your real Chrome profile is refused — use `attach` for that.
+user_data_dir = ""
+
+[workspace]
+# Where screenshots and screencast GIFs are written.
+# Empty means a fresh temp directory per run.
+root = ""
+
+[security]
+# Host allow list. Setting ANY entry switches to default-deny: everything
+# not listed is refused. Patterns are exact hostnames or a leading
+# wildcard label. "*.example.com" matches subdomains only — list the apex
+# separately if you need it.
+#
+# allow_hosts = ["example.com", "*.example.com", "localhost"]
+allow_hosts = []
+
+# Host block list. Takes precedence over allow_hosts. Usable on its own
+# as a plain denylist.
+#
+# block_hosts = ["ads.example.com", "*.tracker.example"]
+block_hosts = []
+
+# Refuse navigation to file:// and data: URLs.
+block_local = false

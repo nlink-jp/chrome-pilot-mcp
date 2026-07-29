@@ -75,10 +75,74 @@ Flags:
 | `--attach <ws://…\|port\|host:port>` | Attach to an existing debugging endpoint (loopback only) instead of launching |
 | `--workspace-root <dir>` | Output directory for screenshots etc. (default: fresh temp dir) |
 | `--viewport <WxH>` | Initial viewport, e.g. `1280x800` |
+| `--profile <name>` | Named persistent profile, kept across runs |
+| `--user-data-dir <path>` | Explicit user-data-dir (exclusive with `--profile`) |
+| `--allow-hosts <list>` | Comma-separated host allow list; setting any switches to default-deny |
+| `--block-hosts <list>` | Comma-separated host block list; wins over the allow list |
+| `--block-local` | Refuse `file://` and `data:` URLs |
+| `--config <path>` | Config file to read (see below) |
 
-Chrome is launched lazily on the first tool call, with a dedicated
-(temporary) profile and the debugging port bound to `127.0.0.1` on an
-ephemeral port.
+Chrome is launched lazily on the first tool call, with the debugging port
+bound to `127.0.0.1` on an ephemeral port.
+
+## Configuration file
+
+Everything above can also live in a TOML file — see
+[config.example.toml](config.example.toml). `--config <path>` reads that
+file (a missing file is a startup error); otherwise
+`~/.config/chrome-pilot-mcp/config.toml` is used when present. The
+working directory is **never** searched, so a config cannot be injected by
+whatever directory the server happens to start in. Explicitly given flags
+override the file.
+
+```toml
+[browser]
+headless = true
+profile  = "work"
+
+[security]
+allow_hosts = ["example.com", "*.example.com"]
+```
+
+## Browser profiles
+
+By default each run gets a throwaway profile that is deleted on shutdown.
+`--profile <name>` keeps one under
+`~/.config/chrome-pilot-mcp/profiles/<name>` (mode 0700) so logins survive
+across runs; `--user-data-dir <path>` uses a directory you name. Both are
+refused together with `--attach`, and pointing `--user-data-dir` at your
+real Chrome profile is refused outright — use `--attach` to drive a
+browser you already have open.
+
+A persistent profile accumulates cookies and logins. Treat that directory
+as sensitive.
+
+## Restricting where the browser can go
+
+An agent driving this server can be prompt-injected, so destinations can
+be limited from outside the agent's reach: the lists are fixed at startup
+and no tool can change them.
+
+```bash
+chrome-pilot-mcp --allow-hosts "example.com,*.example.com"
+```
+
+Setting any `--allow-hosts` entry switches to default-deny.
+`*.example.com` matches subdomains only, so list the apex separately if
+you need it. `--block-hosts` wins over the allow list and works on its own
+as a denylist.
+
+Enforcement is two-layer: `navigate_page` / `new_page` refuse up front
+with a `host_not_allowed` error, and a CDP interception fails every other
+request — in-page `fetch`, redirects, subresources — with
+`BlockedByClient`. Blocked requests still show up in
+`list_network_requests`, so a blocked load is visible rather than
+mysterious. With no lists configured the interception is never installed.
+
+Known gaps (see [ADR-0001](docs/en/adr/0001-host-allow-block-lists.md)):
+WebSocket connections are not intercepted, and pages the tool never
+attached to are not covered. This is a guardrail against agent mishaps,
+not a substitute for OS-level egress control.
 
 MCP client configuration:
 

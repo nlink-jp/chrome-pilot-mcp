@@ -4,6 +4,27 @@
 
 ### Added
 
+- Host allow/block lists (ADR-0001): `--allow-hosts` (default-deny once
+  set), `--block-hosts` (wins over allow), `--block-local`. Enforced both
+  at the tool arguments (`host_not_allowed`) and at the CDP layer, so
+  in-page fetch, redirects, and subresources are covered; no interception
+  is installed when unconfigured
+- `config.toml` support (ADR-0002) with an in-house TOML subset parser:
+  `--config <path>`, else `~/.config/chrome-pilot-mcp/config.toml`. The
+  working directory is never searched. Explicit flags override the file.
+  See `config.example.toml`
+- Browser profiles (ADR-0003): `--profile <name>` for a persistent
+  profile under the tool's managed directory (0700), `--user-data-dir`
+  for an explicit path; the default stays a throwaway profile. Refuses
+  conflicting options and refuses to drive the real Chrome profile
+
+### Fixed
+
+- Launched Chrome is now given time to exit on its own before being
+  killed. It was killed immediately after the CDP `Browser.close`, which
+  cut short the shutdown write of profile data — persistent profiles lost
+  localStorage and cookies
+
 - Phase 2 tools, completing the 27-tool surface: input
   (`click`, `click_at`, `drag`, `fill`, `fill_form`, `hover`, `press_key`,
   `type_text`, `upload_file`, `handle_dialog`), console

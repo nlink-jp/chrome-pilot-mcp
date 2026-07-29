@@ -75,10 +75,73 @@ chrome-pilot-mcp             # stdio で MCP を serve (MCP クライアント�
 | `--attach <ws://…\|port\|host:port>` | 起動せず既存の debugging endpoint にアタッチ (loopback のみ) |
 | `--workspace-root <dir>` | スクリーンショット等の出力先 (既定: 一時ディレクトリ) |
 | `--viewport <WxH>` | 初期ビューポート。例 `1280x800` |
+| `--profile <name>` | 名前付き永続プロファイル (回をまたいで保持) |
+| `--user-data-dir <path>` | user-data-dir の明示指定 (`--profile` と排他) |
+| `--allow-hosts <list>` | ホスト許可リスト (カンマ区切り)。1 つでも指定すると default-deny |
+| `--block-hosts <list>` | ホスト拒否リスト (カンマ区切り)。allow より優先 |
+| `--block-local` | `file://` と `data:` を拒否 |
+| `--config <path>` | 設定ファイル (下記) |
 
-Chrome は最初のツール呼び出し時に遅延起動されます。専用の (一時)
-プロファイルを使い、debugging ポートは `127.0.0.1` の ephemeral ポートに
-bind されます。
+Chrome は最初のツール呼び出し時に遅延起動されます。debugging ポートは
+`127.0.0.1` の ephemeral ポートに bind されます。
+
+## 設定ファイル
+
+上記はすべて TOML ファイルにも書けます
+([config.example.toml](config.example.toml) 参照)。`--config <path>` で
+明示指定 (ファイルがなければ起動エラー)、未指定なら
+`~/.config/chrome-pilot-mcp/config.toml` があれば読みます。カレント
+ディレクトリは**探索しません** — サーバーの起動ディレクトリ次第で設定を
+注入されることを防ぐためです。明示指定したフラグはファイルより優先します。
+
+```toml
+[browser]
+headless = true
+profile  = "work"
+
+[security]
+allow_hosts = ["example.com", "*.example.com"]
+```
+
+## ブラウザプロファイル
+
+既定では毎回使い捨てプロファイルを作り、終了時に削除します。
+`--profile <name>` は `~/.config/chrome-pilot-mcp/profiles/<name>`
+(パーミッション 0700) に永続化し、ログイン状態を回にまたいで保持します。
+`--user-data-dir <path>` は指定ディレクトリをそのまま使います。どちらも
+`--attach` との併用は拒否され、`--user-data-dir` に**実 Chrome の
+プロファイルを指定した場合も拒否**します (開いているブラウザを操作したい
+場合は `--attach` を使ってください)。
+
+永続プロファイルには Cookie やログイン情報が蓄積されます。当該ディレクトリ
+は機微情報として扱ってください。
+
+## ブラウザの行き先を制限する
+
+このサーバーを操作するエージェントはプロンプトインジェクションを受け得る
+ため、行き先をエージェントの手の届かない位置から制限できます。リストは
+起動時に確定し、どのツールからも変更できません。
+
+```bash
+chrome-pilot-mcp --allow-hosts "example.com,*.example.com"
+```
+
+`--allow-hosts` を 1 つでも指定すると default-deny になります。
+`*.example.com` はサブドメインのみにマッチするため、apex が必要なら別途
+列挙してください。`--block-hosts` は allow より優先し、単独で denylist
+としても使えます。
+
+強制は二層です: `navigate_page` / `new_page` は事前に
+`host_not_allowed` エラーで拒否し、CDP インターセプトがそれ以外の
+リクエスト (ページ内 `fetch`、リダイレクト、サブリソース) を
+`BlockedByClient` で失敗させます。遮断されたリクエストは
+`list_network_requests` に残るので、原因不明の失敗になりません。リスト
+未設定時はインターセプト自体を有効化しません。
+
+既知の限界 ([ADR-0001](docs/ja/adr/0001-host-allow-block-lists.ja.md)):
+WebSocket 接続はインターセプト対象外で、ツールが attach していない
+ページには効きません。これはエージェント事故防止のガードレールであり、
+OS レベルの egress 制御の代替ではありません。
 
 MCP クライアント設定:
 
