@@ -65,6 +65,9 @@ CLI flags (server launch options):
 CLI flags only. No config file, no environment variables (no secrets are
 handled).
 
+> **Updated 2026-07-29**: ADR-0002 adds config.toml support (precedence
+> flags > config.toml > defaults). This section is superseded by that ADR.
+
 ### External Dependencies
 
 - **Go module dependencies: zero** (stdlib only). The WebSocket client

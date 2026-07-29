@@ -17,10 +17,10 @@ injected. Browser automation then becomes, for an attacker:
 - an exfiltration channel (POSTing stolen data to attacker hosts)
 
 We want a **server-side destination restriction** that does not depend on
-the LLM's judgment. Configuration is CLI flags only (per the RFP): the
-limits are pinned in the MCP client config, so the LLM cannot loosen them
-through tool calls. This run-time immutability is the core of the
-feature's security value.
+the LLM's judgment. Configuration is fixed at startup (CLI flags or
+config.toml — ADR-0002); no MCP tool can change it at run time, so the
+LLM cannot loosen the limits through tool calls. This run-time
+immutability is the core of the feature's security value.
 
 Naming follows Chrome's own terminology shift: **allow/block**, not
 white/black.

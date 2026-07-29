@@ -62,6 +62,10 @@ CLI フラグ (MCP サーバーとしての起動オプション):
 
 CLI フラグのみ。config ファイル・環境変数なし (秘密情報を扱わないため)。
 
+> **2026-07-29 更新**: ADR-0002 により config.toml サポートを追加
+> (フラグ > config.toml > デフォルトの優先順位)。本節はその ADR に
+> 更新される。
+
 ### External Dependencies
 
 - **Go module 依存: ゼロ** (stdlib のみ)。WebSocket クライアント (RFC 6455、
