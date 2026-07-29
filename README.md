@@ -1,8 +1,9 @@
 # chrome-pilot-mcp
 
-> **Status: in development (scaffold).** The MCP server starts and speaks the
-> protocol, but no browser tools are implemented yet. See the
-> [RFP](docs/en/chrome-pilot-mcp-rfp.md) for the full plan.
+> **Status: in development (Phase 1 core implemented).** Page navigation,
+> a11y snapshot, screenshot, script evaluation, and wait_for work against a
+> real Chrome. Input, console, network, emulation, and screencast tools are
+> next. See the [RFP](docs/en/chrome-pilot-mcp-rfp.md) for the full plan.
 
 [日本語](README.ja.md)
 
@@ -24,16 +25,17 @@ is built for environments where that is unacceptable:
 - **Drives your installed Chrome** — launches it with a dedicated profile
   bound to `127.0.0.1`, or attaches to an existing debugging endpoint
 
-## Planned tool surface (27 tools)
+## Tool surface (27 tools planned)
 
-| Category | Tools |
-|---|---|
-| Pages (6) | `list_pages` / `new_page` / `select_page` / `close_page` / `navigate_page` / `wait_for` |
-| Input (10) | `click` / `click_at` / `drag` / `fill` / `fill_form` / `hover` / `press_key` / `type_text` / `upload_file` / `handle_dialog` |
-| Debugging (5) | `take_snapshot` / `take_screenshot` / `evaluate_script` / `list_console_messages` / `get_console_message` |
-| Network (2) | `list_network_requests` / `get_network_request` |
-| Emulation (2) | `emulate` / `resize_page` |
-| Screencast (2) | `screencast_start` / `screencast_stop` (animated GIF) |
+| Category | Tools | Status |
+|---|---|---|
+| Pages (6) | `list_pages` / `new_page` / `select_page` / `close_page` / `navigate_page` / `wait_for` | ✅ implemented |
+| Debugging (3 of 5) | `take_snapshot` / `take_screenshot` / `evaluate_script` | ✅ implemented |
+| Debugging (rest) | `list_console_messages` / `get_console_message` | planned |
+| Input (10) | `click` / `click_at` / `drag` / `fill` / `fill_form` / `hover` / `press_key` / `type_text` / `upload_file` / `handle_dialog` | planned |
+| Network (2) | `list_network_requests` / `get_network_request` | planned |
+| Emulation (2) | `emulate` / `resize_page` | planned |
+| Screencast (2) | `screencast_start` / `screencast_stop` (animated GIF) | planned |
 
 Tool names and argument schemas follow the upstream so agents can reuse
 existing usage patterns. Lighthouse audits, performance insights, heap
@@ -53,13 +55,29 @@ chrome-pilot-mcp --version   # print version
 chrome-pilot-mcp             # serve MCP over stdio (used by MCP clients)
 ```
 
-MCP client configuration (once tools land):
+Flags:
+
+| Flag | Meaning |
+|---|---|
+| `--headless` | Launch Chrome headless |
+| `--channel <stable\|beta\|dev\|canary>` | Chrome channel to launch (default stable) |
+| `--executable-path <path>` | Explicit Chrome binary (overrides `--channel`) |
+| `--attach <ws://…\|port\|host:port>` | Attach to an existing debugging endpoint (loopback only) instead of launching |
+| `--workspace-root <dir>` | Output directory for screenshots etc. (default: fresh temp dir) |
+| `--viewport <WxH>` | Initial viewport, e.g. `1280x800` |
+
+Chrome is launched lazily on the first tool call, with a dedicated
+(temporary) profile and the debugging port bound to `127.0.0.1` on an
+ephemeral port.
+
+MCP client configuration:
 
 ```json
 {
   "mcpServers": {
     "chrome-pilot": {
-      "command": "/path/to/chrome-pilot-mcp"
+      "command": "/path/to/chrome-pilot-mcp",
+      "args": ["--headless"]
     }
   }
 }

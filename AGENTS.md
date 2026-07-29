@@ -8,8 +8,10 @@ speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
 d'être: eliminate npm supply-chain risk — single static binary, `go.mod`
 with no `require`, nothing downloaded at runtime.
 
-**Current stage: scaffold.** The MCP server starts, answers initialize /
-tools/list (empty) / tools/call, and `--version`. No browser tools yet.
+**Current stage: Phase 1 core implemented.** 9 tools work E2E against real
+Chrome: list/new/select/close/navigate_page, wait_for, evaluate_script,
+take_snapshot, take_screenshot. Remaining: input (10), console (2),
+network (2), emulation (2), screencast GIF (2).
 Full plan: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`).
 
 ## Build & test
@@ -24,19 +26,18 @@ make package  # release archives (zip/tar.gz) + notarization
 
 ```
 main.go                     # calls cmd.Execute()
-cmd/root.go                 # stdlib flag CLI: serve (default), version/--version
+cmd/root.go                 # stdlib flag CLI: serve (default), version/--version, flags
 internal/transport/         # stdio JSON-RPC transport (1MB lines, mutex writes)
 internal/jsonrpc/           # JSON-RPC 2.0 types + standard codes
 internal/mcpserver/         # MCP 2024-11-05 routing, RegisterTool, RawResult
 internal/toolerr/           # structured {code,message,details} tool errors
+internal/ws/                # in-house RFC 6455 client (ws:// loopback only)
+internal/cdp/               # CDP client: id correlation, sessions, events
+internal/browser/           # Chrome launch/attach, executable discovery
+internal/tools/             # Manager (page/session state) + tool handlers
 scripts/                    # codesign/notarize/brew (shared org scripts)
 docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 ```
-
-Planned (not yet created): `internal/ws/` (in-house RFC 6455 client),
-`internal/cdp/` (CDP client: call/event dispatch, target/session management),
-`internal/browser/` (Chrome launcher/attach), `internal/tools/` (the 27 tool
-handlers).
 
 ## Gotchas
 
@@ -52,3 +53,9 @@ handlers).
 - MCP owns stdout. All logging must go to stderr (slog), never stdout.
 - Tool names/schemas mirror the Apache-2.0 upstream; keep the inspired-by
   attribution in both READMEs when renaming or adding tools.
+- Unit tests never touch Chrome: `internal/tools` tests run against the
+  in-memory `fakeChrome` (a scripted `cdp.Conn`). Real-Chrome verification
+  is a manual E2E (pipe JSON-RPC lines into the built binary with
+  `--headless`); run it before any release.
+- The browser connects lazily on the first tool call — initialize and
+  tools/list must keep working without Chrome installed.
