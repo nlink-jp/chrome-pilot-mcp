@@ -103,4 +103,187 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 			"fullPage":{"type":"boolean","description":"Capture the full scrollable page instead of the viewport."}
 		}}`),
 	}, wrap(m.takeScreenshot))
+
+	registerInputTools(s, m)
+	registerObservabilityTools(s, m)
+}
+
+const includeSnapshotProp = `"includeSnapshot":{"type":"boolean","description":"Whether to include a fresh snapshot in the response. Default is false."}`
+
+func registerInputTools(s *mcpserver.Server, m *Manager) {
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "click",
+		Description: "Clicks on the provided element.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"uid":{"type":"string","description":"The uid of an element on the page from the page content snapshot."},
+			"dblClick":{"type":"boolean","description":"Set to true for double clicks. Default is false."},
+			` + includeSnapshotProp + `
+		},"required":["uid"]}`),
+	}, wrap(m.click))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "click_at",
+		Description: "Clicks at the given viewport coordinates.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"x":{"type":"number","description":"The x coordinate."},
+			"y":{"type":"number","description":"The y coordinate."},
+			"dblClick":{"type":"boolean","description":"Set to true for double clicks. Default is false."},
+			` + includeSnapshotProp + `
+		},"required":["x","y"]}`),
+	}, wrap(m.clickAt))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "hover",
+		Description: "Hovers over the provided element.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"uid":{"type":"string","description":"The uid of an element on the page from the page content snapshot."},
+			` + includeSnapshotProp + `
+		},"required":["uid"]}`),
+	}, wrap(m.hover))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "drag",
+		Description: "Drags one element onto another with mouse events. (HTML5 dragstart/drop-based UIs are not simulated.)",
+		InputSchema: schema(`{"type":"object","properties":{
+			"from_uid":{"type":"string","description":"The uid of the element to drag."},
+			"to_uid":{"type":"string","description":"The uid of the element to drop into."},
+			` + includeSnapshotProp + `
+		},"required":["from_uid","to_uid"]}`),
+	}, wrap(m.drag))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "fill",
+		Description: "Fills a value into an input, textarea, select, checkbox/radio (\"true\"/\"false\"), or contenteditable element.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"uid":{"type":"string","description":"The uid of an element on the page from the page content snapshot."},
+			"value":{"type":"string","description":"The value to fill in. \"true\" or \"false\" for checkboxes and toggles."},
+			` + includeSnapshotProp + `
+		},"required":["uid","value"]}`),
+	}, wrap(m.fill))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "fill_form",
+		Description: "Fills multiple form elements at once.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"elements":{"type":"array","description":"Elements from the snapshot to fill out.","items":{"type":"object","properties":{
+				"uid":{"type":"string"},"value":{"type":"string"}
+			},"required":["uid","value"]}},
+			` + includeSnapshotProp + `
+		},"required":["elements"]}`),
+	}, wrap(m.fillForm))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "type_text",
+		Description: "Types text into the currently focused element, optionally pressing a key afterwards.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"text":{"type":"string","description":"The text to type."},
+			"submitKey":{"type":"string","description":"Optional key to press after typing, e.g. \"Enter\", \"Tab\"."}
+		},"required":["text"]}`),
+	}, wrap(m.typeText))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "press_key",
+		Description: "Presses a key or combination, e.g. \"Enter\", \"Control+A\", \"Control+Shift+R\". Modifiers: Control, Shift, Alt, Meta.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"key":{"type":"string","description":"A key or a combination."},
+			` + includeSnapshotProp + `
+		},"required":["key"]}`),
+	}, wrap(m.pressKey))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "upload_file",
+		Description: "Sets a local file on a file input element.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"uid":{"type":"string","description":"The uid of the file input element from the page content snapshot."},
+			"filePath":{"type":"string","description":"The local path of the file to upload."},
+			` + includeSnapshotProp + `
+		},"required":["uid","filePath"]}`),
+	}, wrap(m.uploadFile))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "handle_dialog",
+		Description: "Accepts or dismisses the currently open JavaScript dialog (alert/confirm/prompt).",
+		InputSchema: schema(`{"type":"object","properties":{
+			"action":{"type":"string","enum":["accept","dismiss"],"description":"Whether to accept or dismiss the dialog."},
+			"promptText":{"type":"string","description":"Optional prompt text to enter into the dialog."}
+		},"required":["action"]}`),
+	}, wrap(m.handleDialog))
+}
+
+func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "list_console_messages",
+		Description: "Lists console messages (log/warn/error and uncaught exceptions) recorded on the selected page.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"pageSize":{"type":"integer","description":"Maximum number of messages to return. When omitted, returns all."},
+			"pageIdx":{"type":"integer","description":"Page number to return (0-based)."},
+			"types":{"type":"array","items":{"type":"string"},"description":"Filter by message types, e.g. [\"error\"]."}
+		}}`),
+	}, wrap(m.listConsoleMessages))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "get_console_message",
+		Description: "Gets a console message with full details by its msgid from list_console_messages.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"msgid":{"type":"integer","description":"The msgid of a console message."}
+		},"required":["msgid"]}`),
+	}, wrap(m.getConsoleMessage))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "list_network_requests",
+		Description: "Lists network requests recorded on the selected page.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"pageSize":{"type":"integer","description":"Maximum number of requests to return. When omitted, returns all."},
+			"pageIdx":{"type":"integer","description":"Page number to return (0-based)."},
+			"resourceTypes":{"type":"array","items":{"type":"string"},"description":"Filter by resource types, e.g. [\"XHR\",\"Fetch\"]."}
+		}}`),
+	}, wrap(m.listNetworkRequests))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "get_network_request",
+		Description: "Gets a network request by its reqid from list_network_requests, including headers and (truncated) response body.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"reqid":{"type":"integer","description":"The reqid of the network request."}
+		},"required":["reqid"]}`),
+	}, wrap(m.getNetworkRequest))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "resize_page",
+		Description: "Resizes the selected page's viewport.",
+		InputSchema: schema(`{"type":"object","properties":{
+			"width":{"type":"number","description":"Page width."},
+			"height":{"type":"number","description":"Page height."}
+		},"required":["width","height"]}`),
+	}, wrap(m.resizePage))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "emulate",
+		Description: "Emulates device/environment conditions on the selected page: color scheme, CPU throttling, network throttling, geolocation, user agent, viewport, extra HTTP headers. Omitted parameters are reset (extraHttpHeaders: only touched when provided; \"\" clears).",
+		InputSchema: schema(`{"type":"object","properties":{
+			"colorScheme":{"type":"string","enum":["dark","light","auto"],"description":"Emulate dark or light mode; \"auto\" resets."},
+			"cpuThrottlingRate":{"type":"number","description":"CPU slowdown factor. Omit or 1 to disable."},
+			"extraHttpHeaders":{"type":"string","description":"Extra HTTP headers as a JSON object string. Empty string clears."},
+			"geolocation":{"type":"string","description":"\"<latitude>,<longitude>\" to emulate. Omit to clear."},
+			"networkConditions":{"type":"string","enum":["Offline","Slow 3G","Fast 3G","Slow 4G","Fast 4G"],"description":"Throttle network. Omit to disable."},
+			"userAgent":{"type":"string","description":"User agent override. Empty string clears."},
+			"viewport":{"type":"string","description":"\"<width>x<height>[x<dpr>][,mobile][,touch][,landscape]\". Omit to clear."}
+		}}`),
+	}, wrap(m.emulate))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "screencast_start",
+		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop).",
+		InputSchema: schema(`{"type":"object","properties":{
+			"filePath":{"type":"string","description":"Output .gif path. Defaults to the workspace."},
+			"maxWidth":{"type":"integer","description":"Max frame width in px. Default 800."},
+			"everyNthFrame":{"type":"integer","description":"Capture every Nth frame. Default 2."},
+			"quality":{"type":"integer","description":"JPEG capture quality 0-100. Default 70."}
+		}}`),
+	}, wrap(m.screencastStart))
+
+	s.RegisterTool(mcpserver.Tool{
+		Name:        "screencast_stop",
+		Description: "Stops the recording and writes the animated GIF; returns its path, frame count, and duration.",
+		InputSchema: schema(`{"type":"object","properties":{}}`),
+	}, wrap(m.screencastStop))
 }

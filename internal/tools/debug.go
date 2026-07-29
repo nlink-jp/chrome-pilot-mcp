@@ -179,17 +179,28 @@ func (m *Manager) takeSnapshot(ctx context.Context, raw json.RawMessage) (any, e
 	if err != nil {
 		return nil, err
 	}
+	text, err := m.snapshotText(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return mcpserver.RawResult{Content: []mcpserver.ContentBlock{
+		{Type: "text", Text: text},
+	}}, nil
+}
 
+// snapshotText captures a fresh a11y snapshot of p, re-seeds the uid map,
+// and returns the rendered tree (with header).
+func (m *Manager) snapshotText(ctx context.Context, p *pageState) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
 	if err := m.client.Call(callCtx, p.sessionID, "Accessibility.enable", nil, nil); err != nil {
-		return nil, err
+		return "", err
 	}
 	var res struct {
 		Nodes []axNode `json:"nodes"`
 	}
 	if err := m.client.Call(callCtx, p.sessionID, "Accessibility.getFullAXTree", nil, &res); err != nil {
-		return nil, err
+		return "", err
 	}
 
 	m.mu.Lock()
@@ -207,10 +218,7 @@ func (m *Manager) takeSnapshot(ctx context.Context, raw json.RawMessage) (any, e
 	}
 	m.mu.Unlock()
 
-	header := fmt.Sprintf("Page snapshot (url: %s)\n", p.url)
-	return mcpserver.RawResult{Content: []mcpserver.ContentBlock{
-		{Type: "text", Text: header + text},
-	}}, nil
+	return fmt.Sprintf("Page snapshot (url: %s)\n", p.url) + text, nil
 }
 
 // formatAXTree renders the flat AX node list as an indented uid-tagged tree

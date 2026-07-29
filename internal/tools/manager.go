@@ -68,6 +68,10 @@ type Manager struct {
 	waiterMu sync.Mutex
 	waiters  map[waiterKey][]chan json.RawMessage
 
+	// col holds passive event-collector state (console, network, dialogs,
+	// screencast frames).
+	col collectors
+
 	wsOnce       sync.Once
 	workspaceDir string
 	wsErr        error
@@ -102,6 +106,7 @@ func (m *Manager) init() {
 	m.pageEnabled = make(map[string]bool)
 	m.uids = make(map[string]uidTarget)
 	m.waiters = make(map[waiterKey][]chan json.RawMessage)
+	m.col.init()
 }
 
 func (m *Manager) productionConnect(ctx context.Context) (*cdp.Client, *browser.Browser, error) {
@@ -170,6 +175,8 @@ func (m *Manager) Shutdown() {
 // ---- events ----
 
 func (m *Manager) dispatchEvent(ev cdp.Event) {
+	m.handleCollectorEvent(ev.Method, ev.SessionID, ev.Params)
+
 	key := waiterKey{sessionID: ev.SessionID, method: ev.Method}
 	m.waiterMu.Lock()
 	chans := m.waiters[key]
@@ -293,6 +300,14 @@ func (m *Manager) attachPageLocked(ctx context.Context, p *pageState) error {
 	}
 	if !m.pageEnabled[p.sessionID] {
 		if err := m.client.Call(ctx, p.sessionID, "Page.enable", nil, nil); err != nil {
+			return err
+		}
+		// Runtime/Network power the console and network collectors; enabling
+		// them here means collection starts at first attach.
+		if err := m.client.Call(ctx, p.sessionID, "Runtime.enable", nil, nil); err != nil {
+			return err
+		}
+		if err := m.client.Call(ctx, p.sessionID, "Network.enable", nil, nil); err != nil {
 			return err
 		}
 		if m.cfg.ViewportWidth > 0 && m.cfg.ViewportHeight > 0 {

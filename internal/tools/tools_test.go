@@ -34,7 +34,13 @@ type fakeChrome struct {
 	// overrides, keyed by method; return (result, cdpErrMsg)
 	overrides map[string]func(sessionID string, params map[string]any) (any, string)
 	// calls records every method invocation for assertions
-	calls []string
+	calls []callRec
+}
+
+type callRec struct {
+	method    string
+	sessionID string
+	params    map[string]any
 }
 
 type fakePage struct {
@@ -91,7 +97,7 @@ func (f *fakeChrome) WriteMessage(data []byte) error {
 		return err
 	}
 	f.mu.Lock()
-	f.calls = append(f.calls, req.Method)
+	f.calls = append(f.calls, callRec{method: req.Method, sessionID: req.SessionID, params: req.Params})
 	override := f.overrides[req.Method]
 	f.mu.Unlock()
 
@@ -144,8 +150,38 @@ func (f *fakeChrome) builtin(method, sessionID string, params map[string]any) (a
 			}
 		}
 		return map[string]any{"success": true}, ""
-	case "Page.enable", "Accessibility.enable", "Emulation.setDeviceMetricsOverride":
+	case "Page.enable", "Accessibility.enable", "Runtime.enable", "Network.enable",
+		"Emulation.setDeviceMetricsOverride", "Emulation.clearDeviceMetricsOverride",
+		"Emulation.setEmulatedMedia", "Emulation.setCPUThrottlingRate",
+		"Emulation.setGeolocationOverride", "Emulation.setUserAgentOverride",
+		"Emulation.setTouchEmulationEnabled",
+		"Network.emulateNetworkConditions", "Network.setExtraHTTPHeaders",
+		"Input.dispatchMouseEvent", "Input.dispatchKeyEvent", "Input.insertText",
+		"DOM.scrollIntoViewIfNeeded", "DOM.setFileInputFiles",
+		"Page.handleJavaScriptDialog", "Page.startScreencast", "Page.stopScreencast",
+		"Page.screencastFrameAck":
 		return map[string]any{}, ""
+	case "DOM.getBoxModel":
+		// A 20x20 content box centered on (100, 50).
+		return map[string]any{"model": map[string]any{
+			"content": []float64{90, 40, 110, 40, 110, 60, 90, 60},
+		}}, ""
+	case "DOM.resolveNode":
+		return map[string]any{"object": map[string]any{"objectId": "obj-1"}}, ""
+	case "Runtime.callFunctionOn":
+		return map[string]any{"result": map[string]any{"type": "undefined"}}, ""
+	case "Network.getResponseBody":
+		return map[string]any{"body": "", "base64Encoded": false}, ""
+	case "Accessibility.getFullAXTree":
+		// Default tree: root → button + textbox (used by input tests).
+		return map[string]any{"nodes": []map[string]any{
+			{"nodeId": "1", "role": map[string]any{"value": "RootWebArea"}, "name": map[string]any{"value": "Test"},
+				"childIds": []string{"2", "3"}, "backendDOMNodeId": 100},
+			{"nodeId": "2", "role": map[string]any{"value": "button"}, "name": map[string]any{"value": "Go"},
+				"childIds": []string{}, "backendDOMNodeId": 101},
+			{"nodeId": "3", "role": map[string]any{"value": "textbox"}, "name": map[string]any{"value": "Name"},
+				"childIds": []string{}, "backendDOMNodeId": 102},
+		}}, ""
 	case "Page.navigate":
 		url := params["url"].(string)
 		for i := range f.pages {
@@ -163,15 +199,19 @@ func (f *fakeChrome) builtin(method, sessionID string, params map[string]any) (a
 }
 
 func (f *fakeChrome) callCount(method string) int {
+	return len(f.callsOf(method))
+}
+
+func (f *fakeChrome) callsOf(method string) []callRec {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	n := 0
+	var out []callRec
 	for _, c := range f.calls {
-		if c == method {
-			n++
+		if c.method == method {
+			out = append(out, c)
 		}
 	}
-	return n
+	return out
 }
 
 // newTestManager wires a Manager to a fakeChrome.
