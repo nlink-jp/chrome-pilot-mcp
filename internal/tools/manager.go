@@ -91,9 +91,22 @@ type Manager struct {
 	wsErr        error
 }
 
+// uidTarget locates the DOM node behind a snapshot uid. Accessibility-tree
+// nodes carry a backendNodeId; nodes recovered from the DOM (see
+// extraInteractiveNodes) carry a nodeId instead. CDP's DOM commands accept
+// either, so callers just pass nodeParams().
 type uidTarget struct {
 	backendNodeID int64
+	nodeID        int64
 	sessionID     string
+}
+
+// nodeParams returns the CDP node reference for this target.
+func (t uidTarget) nodeParams() map[string]any {
+	if t.backendNodeID != 0 {
+		return map[string]any{"backendNodeId": t.backendNodeID}
+	}
+	return map[string]any{"nodeId": t.nodeID}
 }
 
 type waiterKey struct {

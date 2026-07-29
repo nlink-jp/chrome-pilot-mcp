@@ -210,7 +210,7 @@ func (m *Manager) snapshotText(ctx context.Context, p *pageState) (string, error
 	m.uids = make(map[string]uidTarget)
 	m.mu.Unlock()
 
-	text, uids := formatAXTree(res.Nodes, seq)
+	text, uids, nextCounter := formatAXTree(res.Nodes, seq)
 
 	m.mu.Lock()
 	for uid, backendID := range uids {
@@ -218,12 +218,27 @@ func (m *Manager) snapshotText(ctx context.Context, p *pageState) (string, error
 	}
 	m.mu.Unlock()
 
+	// Elements that are clickable but carry no accessible name never reach
+	// the accessibility tree (icon-only buttons, empty click targets), which
+	// would leave them unreachable by uid. Recover them from the DOM and
+	// list them separately.
+	extra, err := m.extraInteractiveNodes(callCtx, p, seq, nextCounter)
+	if err != nil {
+		// Never fail a snapshot over the supplementary pass; the tree is
+		// still useful without it.
+		m.logger.Warn("extra interactive nodes", "err", err)
+	} else if extra != "" {
+		text += extra
+	}
+
 	return fmt.Sprintf("Page snapshot (url: %s)\n", p.url) + text, nil
 }
 
-// formatAXTree renders the flat AX node list as an indented uid-tagged tree
-// and returns the uid → backendDOMNodeId map.
-func formatAXTree(nodes []axNode, seq int) (string, map[string]int64) {
+// formatAXTree renders the flat AX node list as an indented uid-tagged tree.
+// It returns the rendered text, the uid → backendDOMNodeId map, and the next
+// free uid counter so a supplementary pass can keep numbering where this one
+// stopped.
+func formatAXTree(nodes []axNode, seq int) (string, map[string]int64, int) {
 	byID := make(map[string]axNode, len(nodes))
 	isChild := make(map[string]bool)
 	for _, n := range nodes {
@@ -286,5 +301,5 @@ func formatAXTree(nodes []axNode, seq int) (string, map[string]int64) {
 	if truncated {
 		sb.WriteString("... (snapshot truncated at char budget)\n")
 	}
-	return sb.String(), uids
+	return sb.String(), uids, counter + 1
 }

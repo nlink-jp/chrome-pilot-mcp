@@ -25,18 +25,16 @@ func (m *Manager) resolveUID(uid string) (uidTarget, error) {
 
 // elementCenter scrolls the node into view and returns the center of its
 // content box in CSS pixels.
-func (m *Manager) elementCenter(ctx context.Context, sessionID string, backendNodeID int64) (float64, float64, error) {
+func (m *Manager) elementCenter(ctx context.Context, t uidTarget) (float64, float64, error) {
 	// Best effort; some nodes (e.g. options) do not support it.
-	_ = m.client.Call(ctx, sessionID, "DOM.scrollIntoViewIfNeeded",
-		map[string]any{"backendNodeId": backendNodeID}, nil)
+	_ = m.client.Call(ctx, t.sessionID, "DOM.scrollIntoViewIfNeeded", t.nodeParams(), nil)
 
 	var res struct {
 		Model struct {
 			Content []float64 `json:"content"`
 		} `json:"model"`
 	}
-	err := m.client.Call(ctx, sessionID, "DOM.getBoxModel",
-		map[string]any{"backendNodeId": backendNodeID}, &res)
+	err := m.client.Call(ctx, t.sessionID, "DOM.getBoxModel", t.nodeParams(), &res)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -101,7 +99,7 @@ func (m *Manager) uidCenter(ctx context.Context, uid string) (*pageState, float6
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	x, y, err := m.elementCenter(callCtx, t.sessionID, t.backendNodeID)
+	x, y, err := m.elementCenter(callCtx, t)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -208,7 +206,7 @@ func (m *Manager) drag(ctx context.Context, raw json.RawMessage) (any, error) {
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	tx, ty, err := m.elementCenter(callCtx, to.sessionID, to.backendNodeID)
+	tx, ty, err := m.elementCenter(callCtx, to)
 	if err != nil {
 		return nil, err
 	}
@@ -275,8 +273,7 @@ func (m *Manager) fillElement(ctx context.Context, uid, value string) error {
 			ObjectID string `json:"objectId"`
 		} `json:"object"`
 	}
-	err = m.client.Call(callCtx, t.sessionID, "DOM.resolveNode",
-		map[string]any{"backendNodeId": t.backendNodeID}, &resolved)
+	err = m.client.Call(callCtx, t.sessionID, "DOM.resolveNode", t.nodeParams(), &resolved)
 	if err != nil {
 		return err
 	}
@@ -431,10 +428,9 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	err = m.client.Call(callCtx, t.sessionID, "DOM.setFileInputFiles", map[string]any{
-		"files":         []string{args.FilePath},
-		"backendNodeId": t.backendNodeID,
-	}, nil)
+	fileParams := t.nodeParams()
+	fileParams["files"] = []string{args.FilePath}
+	err = m.client.Call(callCtx, t.sessionID, "DOM.setFileInputFiles", fileParams, nil)
 	if err != nil {
 		return nil, err
 	}

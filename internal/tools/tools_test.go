@@ -189,6 +189,15 @@ func (f *fakeChrome) builtin(method, sessionID string, params map[string]any) (a
 		}}, ""
 	case "DOM.resolveNode":
 		return map[string]any{"object": map[string]any{"objectId": "obj-1"}}, ""
+	case "DOM.getDocument":
+		return map[string]any{"root": map[string]any{"nodeId": 1}}, ""
+	case "DOM.querySelectorAll":
+		// No extra interactive elements unless a test overrides this.
+		return map[string]any{"nodeIds": []int64{}}, ""
+	case "Runtime.evaluate":
+		// Default: the extra-interactive-nodes pass finds nothing. Tests
+		// that care about Runtime.evaluate override this method.
+		return map[string]any{"result": map[string]any{"type": "object", "value": []any{}}}, ""
 	case "Runtime.callFunctionOn":
 		return map[string]any{"result": map[string]any{"type": "undefined"}}, ""
 	case "Network.getResponseBody":
