@@ -32,11 +32,16 @@ type fakeChrome struct {
 	closed   bool
 	pages    []fakePage // ordered
 	sessions map[string]string
-	// overrides, keyed by method; return (result, cdpErrMsg)
+	// overrides, keyed by method; return (result, cdpErrMsg). Returning
+	// noReply as the error string sends nothing back, modelling a renderer
+	// blocked by a JavaScript dialog.
 	overrides map[string]func(sessionID string, params map[string]any) (any, string)
 	// calls records every method invocation for assertions
 	calls []callRec
 }
+
+// noReply is the sentinel an override returns to send no response at all.
+const noReply = "__no_reply__"
 
 type callRec struct {
 	method    string
@@ -127,6 +132,9 @@ func (f *fakeChrome) WriteMessage(data []byte) error {
 		result, errMsg = override(req.SessionID, req.Params)
 	} else {
 		result, errMsg = f.builtin(req.Method, req.SessionID, req.Params)
+	}
+	if errMsg == noReply {
+		return nil // blocked renderer: the reply never comes
 	}
 
 	var frame []byte

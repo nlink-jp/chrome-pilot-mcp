@@ -45,11 +45,13 @@ func (m *Manager) elementCenter(ctx context.Context, t uidTarget) (float64, floa
 	return (q[0] + q[2] + q[4] + q[6]) / 4, (q[1] + q[3] + q[5] + q[7]) / 4, nil
 }
 
-// mouseClickAt dispatches a click (or double click) at x,y.
-func (m *Manager) mouseClickAt(ctx context.Context, sessionID string, x, y float64, dblClick bool) error {
+// mouseClickAt dispatches a click (or double click) at x,y. It stops early
+// and reports the dialog when the click opens one, since every further
+// event would block on the same dialog.
+func (m *Manager) mouseClickAt(ctx context.Context, sessionID string, x, y float64, dblClick bool) (*dialogState, error) {
 	move := map[string]any{"type": "mouseMoved", "x": x, "y": y, "button": "none"}
-	if err := m.client.Call(ctx, sessionID, "Input.dispatchMouseEvent", move, nil); err != nil {
-		return err
+	if d, err := m.callGuarded(ctx, sessionID, "Input.dispatchMouseEvent", move, nil); d != nil || err != nil {
+		return d, err
 	}
 	clicks := 1
 	if dblClick {
@@ -61,12 +63,12 @@ func (m *Manager) mouseClickAt(ctx context.Context, sessionID string, x, y float
 				"type": typ, "x": x, "y": y,
 				"button": "left", "clickCount": i,
 			}
-			if err := m.client.Call(ctx, sessionID, "Input.dispatchMouseEvent", ev, nil); err != nil {
-				return err
+			if d, err := m.callGuarded(ctx, sessionID, "Input.dispatchMouseEvent", ev, nil); d != nil || err != nil {
+				return d, err
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // finishInput builds the tool result, appending a fresh snapshot when asked.
@@ -124,10 +126,16 @@ func (m *Manager) click(ctx context.Context, raw json.RawMessage) (any, error) {
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	if err := m.mouseClickAt(callCtx, sessionOf(p), x, y, args.DblClick); err != nil {
+	dlg, err := m.mouseClickAt(callCtx, sessionOf(p), x, y, args.DblClick)
+	if err != nil {
 		return nil, err
 	}
-	return m.finishInput(ctx, p, map[string]any{"clicked": args.UID, "dblClick": args.DblClick}, args.IncludeSnapshot)
+	res := withDialogNote(map[string]any{"clicked": args.UID, "dblClick": args.DblClick}, dlg)
+	if dlg != nil {
+		// The page is blocked; a snapshot would block with it.
+		return m.finishInput(ctx, p, res, false)
+	}
+	return m.finishInput(ctx, p, res, args.IncludeSnapshot)
 }
 
 func sessionOf(p *pageState) string { return p.sessionID }
@@ -151,10 +159,15 @@ func (m *Manager) clickAt(ctx context.Context, raw json.RawMessage) (any, error)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	if err := m.mouseClickAt(callCtx, p.sessionID, *args.X, *args.Y, args.DblClick); err != nil {
+	dlg, err := m.mouseClickAt(callCtx, p.sessionID, *args.X, *args.Y, args.DblClick)
+	if err != nil {
 		return nil, err
 	}
-	return m.finishInput(ctx, p, map[string]any{"clickedAt": []float64{*args.X, *args.Y}}, args.IncludeSnapshot)
+	res := withDialogNote(map[string]any{"clickedAt": []float64{*args.X, *args.Y}}, dlg)
+	if dlg != nil {
+		return m.finishInput(ctx, p, res, false)
+	}
+	return m.finishInput(ctx, p, res, args.IncludeSnapshot)
 }
 
 func (m *Manager) hover(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -369,15 +382,17 @@ func (m *Manager) typeText(ctx context.Context, raw json.RawMessage) (any, error
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	if err := m.client.Call(callCtx, p.sessionID, "Input.insertText", map[string]any{"text": *args.Text}, nil); err != nil {
+	dlg, err := m.callGuarded(callCtx, p.sessionID, "Input.insertText", map[string]any{"text": *args.Text}, nil)
+	if err != nil {
 		return nil, err
 	}
-	if args.SubmitKey != "" {
-		if err := m.pressKeyCombo(callCtx, p.sessionID, args.SubmitKey); err != nil {
+	if dlg == nil && args.SubmitKey != "" {
+		dlg, err = m.pressKeyCombo(callCtx, p.sessionID, args.SubmitKey)
+		if err != nil {
 			return nil, err
 		}
 	}
-	return map[string]any{"typed": *args.Text}, nil
+	return withDialogNote(map[string]any{"typed": *args.Text}, dlg), nil
 }
 
 func (m *Manager) pressKey(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -397,10 +412,15 @@ func (m *Manager) pressKey(ctx context.Context, raw json.RawMessage) (any, error
 	}
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	if err := m.pressKeyCombo(callCtx, p.sessionID, args.Key); err != nil {
+	dlg, err := m.pressKeyCombo(callCtx, p.sessionID, args.Key)
+	if err != nil {
 		return nil, err
 	}
-	return m.finishInput(ctx, p, map[string]any{"pressed": args.Key}, args.IncludeSnapshot)
+	res := withDialogNote(map[string]any{"pressed": args.Key}, dlg)
+	if dlg != nil {
+		return m.finishInput(ctx, p, res, false)
+	}
+	return m.finishInput(ctx, p, res, args.IncludeSnapshot)
 }
 
 func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -571,11 +591,13 @@ func editCommands(mods int, key string) []string {
 	}
 }
 
-// pressKeyCombo dispatches keyDown+keyUp for a combo like "Control+A".
-func (m *Manager) pressKeyCombo(ctx context.Context, sessionID, combo string) error {
+// pressKeyCombo dispatches keyDown+keyUp for a combo like "Control+A". It
+// reports a dialog opened by the key press (Enter submitting a form that
+// calls confirm(), say) instead of blocking on it.
+func (m *Manager) pressKeyCombo(ctx context.Context, sessionID, combo string) (*dialogState, error) {
 	mods, def, err := parseKeyCombo(combo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	down := map[string]any{
 		"type": "rawKeyDown", "modifiers": mods,
@@ -590,13 +612,13 @@ func (m *Manager) pressKeyCombo(ctx context.Context, sessionID, combo string) er
 		down["type"] = "keyDown"
 		down["text"] = def.text
 	}
-	if err := m.client.Call(ctx, sessionID, "Input.dispatchKeyEvent", down, nil); err != nil {
-		return err
+	if d, err := m.callGuarded(ctx, sessionID, "Input.dispatchKeyEvent", down, nil); d != nil || err != nil {
+		return d, err
 	}
 	up := map[string]any{
 		"type": "keyUp", "modifiers": mods,
 		"key": def.key, "code": def.code,
 		"windowsVirtualKeyCode": def.keyCode, "nativeVirtualKeyCode": def.keyCode,
 	}
-	return m.client.Call(ctx, sessionID, "Input.dispatchKeyEvent", up, nil)
+	return m.callGuarded(ctx, sessionID, "Input.dispatchKeyEvent", up, nil)
 }

@@ -52,7 +52,9 @@ func (m *Manager) evaluateScript(ctx context.Context, raw json.RawMessage) (any,
 			} `json:"exception"`
 		} `json:"exceptionDetails"`
 	}
-	err = m.client.Call(callCtx, p.sessionID, "Runtime.evaluate", map[string]any{
+	// A script that calls alert()/confirm() blocks the renderer, so guard
+	// this the same way input dispatch is guarded.
+	dlg, err := m.callGuarded(callCtx, p.sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    "(" + args.Function + ")()",
 		"returnByValue": true,
 		"awaitPromise":  true,
@@ -60,6 +62,9 @@ func (m *Manager) evaluateScript(ctx context.Context, raw json.RawMessage) (any,
 	}, &res)
 	if err != nil {
 		return nil, err
+	}
+	if dlg != nil {
+		return withDialogNote(map[string]any{"type": "interrupted"}, dlg), nil
 	}
 	if res.ExceptionDetails != nil {
 		desc := res.ExceptionDetails.Text
