@@ -330,13 +330,28 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// closeGrace is how long a launched Chrome gets to exit on its own before
+// it is killed. Chrome writes profile data (localStorage, cookies) during
+// shutdown, so killing it immediately after the CDP Browser.close silently
+// loses the state a persistent profile exists to keep.
+const closeGrace = 10 * time.Second
+
 // Close terminates a launched Chrome (the caller should try Browser.close
 // over CDP first for a graceful exit) and removes a temp profile. For
 // attached browsers it does nothing.
 func (b *Browser) Close() {
 	if b.cmd != nil && b.cmd.Process != nil {
-		_ = b.cmd.Process.Kill()
-		_ = b.cmd.Wait()
+		exited := make(chan struct{})
+		go func() {
+			_ = b.cmd.Wait()
+			close(exited)
+		}()
+		select {
+		case <-exited:
+		case <-time.After(closeGrace):
+			_ = b.cmd.Process.Kill()
+			<-exited
+		}
 	}
 	if b.tempProfile && strings.Contains(b.userDataDir, "chrome-pilot-mcp-profile-") {
 		_ = os.RemoveAll(b.userDataDir)

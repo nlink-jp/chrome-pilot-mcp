@@ -28,6 +28,7 @@ type fakeChrome struct {
 
 	mu       sync.Mutex
 	queue    chan []byte
+	done     chan struct{}
 	closed   bool
 	pages    []fakePage // ordered
 	sessions map[string]string
@@ -53,6 +54,7 @@ func newFakeChrome(t *testing.T, initialPages ...string) *fakeChrome {
 	f := &fakeChrome{
 		t:         t,
 		queue:     make(chan []byte, 256),
+		done:      make(chan struct{}),
 		sessions:  make(map[string]string),
 		overrides: make(map[string]func(string, map[string]any) (any, string)),
 	}
@@ -62,12 +64,30 @@ func newFakeChrome(t *testing.T, initialPages ...string) *fakeChrome {
 	return f
 }
 
+// send queues a frame. The channel is never closed — background goroutines
+// (screencast acks, Fetch continue/fail) may still be writing when the
+// connection closes, and closing under them would be a race. Shutdown is
+// signalled by closing done instead.
+func (f *fakeChrome) send(frame []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
+		return
+	}
+	select {
+	case f.queue <- frame:
+	default:
+		f.t.Errorf("fakeChrome: frame queue full, dropping %s", frame)
+	}
+}
+
 func (f *fakeChrome) ReadMessage() ([]byte, error) {
-	data, ok := <-f.queue
-	if !ok {
+	select {
+	case data := <-f.queue:
+		return data, nil
+	case <-f.done:
 		return nil, io.EOF
 	}
-	return data, nil
 }
 
 func (f *fakeChrome) Close() error {
@@ -75,7 +95,7 @@ func (f *fakeChrome) Close() error {
 	defer f.mu.Unlock()
 	if !f.closed {
 		f.closed = true
-		close(f.queue)
+		close(f.done)
 	}
 	return nil
 }
@@ -83,7 +103,7 @@ func (f *fakeChrome) Close() error {
 func (f *fakeChrome) emit(sessionID, method string, params any) {
 	pb, _ := json.Marshal(params)
 	frame, _ := json.Marshal(map[string]any{"method": method, "params": json.RawMessage(pb), "sessionId": sessionID})
-	f.queue <- frame
+	f.send(frame)
 }
 
 func (f *fakeChrome) WriteMessage(data []byte) error {
@@ -116,7 +136,7 @@ func (f *fakeChrome) WriteMessage(data []byte) error {
 		rb, _ := json.Marshal(result)
 		frame, _ = json.Marshal(map[string]any{"id": req.ID, "result": json.RawMessage(rb)})
 	}
-	f.queue <- frame
+	f.send(frame)
 	return nil
 }
 
