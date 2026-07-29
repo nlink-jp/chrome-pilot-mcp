@@ -23,6 +23,7 @@ profiles (all Accepted).
 make build    # → dist/chrome-pilot-mcp (never `go build` directly)
 make test     # go test ./...
 make package  # release archives (zip/tar.gz) + notarization
+make brew     # after package: render the formula into the local homebrew-tap
 ```
 
 ## Structure

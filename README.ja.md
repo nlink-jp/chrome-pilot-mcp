@@ -51,6 +51,29 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
 流用できるようにします。Lighthouse 監査・performance insight・heap snapshot
 解析・extensions・WebMCP は恒久的にスコープ外です。
 
+## インストール
+
+Homebrew(macOS, Apple Silicon — 署名・notarize 済みビルド済みバイナリ):
+
+```sh
+brew install nlink-jp/tap/chrome-pilot-mcp
+```
+
+または [releases ページ](https://github.com/nlink-jp/chrome-pilot-mcp/releases)
+から linux/amd64, linux/arm64, darwin/arm64, windows/amd64 のビルド済み
+バイナリを取得してください。
+
+ソースからビルドする場合(Go 1.23+):
+
+```sh
+git clone https://github.com/nlink-jp/chrome-pilot-mcp
+cd chrome-pilot-mcp
+make build          # → dist/chrome-pilot-mcp
+```
+
+別途 Google Chrome のインストールが必要です。本サーバーはインストール済みの
+Chrome を操作するだけで、ブラウザのダウンロードは一切行いません。
+
 ## ビルド
 
 ```bash

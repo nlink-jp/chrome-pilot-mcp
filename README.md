@@ -51,6 +51,29 @@ Tool names and argument schemas follow the upstream so agents can reuse
 existing usage patterns. Lighthouse audits, performance insights, heap
 snapshot analysis, extensions, and WebMCP are permanently out of scope.
 
+## Install
+
+Homebrew (macOS, Apple Silicon — signed & notarized prebuilt binary):
+
+```sh
+brew install nlink-jp/tap/chrome-pilot-mcp
+```
+
+Or grab a prebuilt binary for linux/amd64, linux/arm64, darwin/arm64, or
+windows/amd64 from the
+[releases page](https://github.com/nlink-jp/chrome-pilot-mcp/releases).
+
+To build from source (Go 1.23+):
+
+```sh
+git clone https://github.com/nlink-jp/chrome-pilot-mcp
+cd chrome-pilot-mcp
+make build          # → dist/chrome-pilot-mcp
+```
+
+You also need Google Chrome installed — this server drives the browser you
+already have and never downloads one.
+
 ## Build
 
 ```bash
