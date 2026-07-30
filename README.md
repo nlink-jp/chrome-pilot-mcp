@@ -43,7 +43,9 @@ Notable behaviors:
   recovered from the DOM and listed separately under it.
 - When an action opens an `alert`/`confirm`/`prompt`, the page freezes
   until it is handled. The tool returns immediately with the dialog's
-  type and message; call `handle_dialog` to continue.
+  type and message; call `handle_dialog` to continue. Acting on a page
+  whose dialog is already open fails fast with `dialog_open` instead —
+  the action never reached the page.
 - `wait_for` takes either `text` or a `selector` with a `state`
   (`visible`, `hidden`, `present`, `absent`).
 - `list_console_messages` / `list_network_requests` return `lastMsgId` /

@@ -43,7 +43,9 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   下に別枠で列挙します。
 - 操作が `alert`/`confirm`/`prompt` を開いた場合、ページは処理されるまで
   停止します。ツールはダイアログの種類とメッセージを付けて即座に戻るので、
-  `handle_dialog` で続行してください。
+  `handle_dialog` で続行してください。既にダイアログが開いているページを
+  操作した場合は `dialog_open` エラーで即座に失敗します (操作はページに
+  届いていません)。
 - `wait_for` は `text` か、`selector` + `state`
   (`visible` / `hidden` / `present` / `absent`) のどちらかを取ります。
 - `list_console_messages` / `list_network_requests` は `lastMsgId` /

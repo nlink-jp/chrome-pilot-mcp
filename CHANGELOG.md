@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.1] - 2026-07-30
+
+### Fixed
+
+- **Every renderer-facing call now fails fast while a JavaScript dialog is
+  open.** v0.3.0 guarded input dispatch and `evaluate_script`, but a click
+  first resolves the element's geometry, and `DOM.getBoxModel` blocks on an
+  open dialog just as hard — clicking with a dialog already open waited out
+  the full 30s timeout before the guarded dispatch was ever reached. DOM
+  geometry and node resolution, the accessibility tree, screenshots, script
+  evaluation and file input all go through the guard now and return a
+  `dialog_open` error naming the dialog and pointing at `handle_dialog`
+  (0.00s in place of 30s against real Chrome).
+
+  A dialog opened *by* an action still comes back as the `dialogOpen` note
+  on a successful result — the action landed. A dialog that was already open
+  is a precondition failure, so it is an error.
+
 ## [0.3.0] - 2026-07-30
 
 From an external test report covering all 27 tools.
@@ -117,6 +135,7 @@ directly and driving the Chrome you already have installed.
   on an ephemeral port, or `--attach`ed to an existing loopback endpoint.
   Nothing is downloaded at run time
 
+[0.3.1]: https://github.com/nlink-jp/chrome-pilot-mcp/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/nlink-jp/chrome-pilot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nlink-jp/chrome-pilot-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nlink-jp/chrome-pilot-mcp/releases/tag/v0.1.0
