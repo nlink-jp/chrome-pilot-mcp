@@ -65,6 +65,7 @@ const (
 	CodePageNotFound        = "page_not_found"
 	CodeElementNotFound     = "element_not_found"
 	CodeDialogNotOpen       = "dialog_not_open"
+	CodeDialogOpen          = "dialog_open"
 	CodeScreencastNotActive = "screencast_not_active"
 	CodeHostNotAllowed      = "host_not_allowed"
 	CodeCDPError            = "cdp_error"

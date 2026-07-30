@@ -36,6 +36,13 @@ func (m *Manager) evaluateScript(ctx context.Context, raw json.RawMessage) (any,
 	if err != nil {
 		return nil, err
 	}
+	// A dialog that was already open is a precondition failure, distinct
+	// from one this script opens (reported below as a note on the result).
+	if d := m.openDialog(p.sessionID); d != nil {
+		return nil, toolerr.Newf(toolerr.CodeDialogOpen,
+			"a %s dialog is open and the page is blocked; call handle_dialog to continue", d.Type).
+			WithDetails(map[string]any{"dialogType": d.Type, "message": d.Message})
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, timeoutFromMS(args.Timeout, defaultCallTimeout))
 	defer cancel()
@@ -117,7 +124,7 @@ func (m *Manager) takeScreenshot(ctx context.Context, raw json.RawMessage) (any,
 	var res struct {
 		Data string `json:"data"`
 	}
-	if err := m.client.Call(callCtx, p.sessionID, "Page.captureScreenshot", params, &res); err != nil {
+	if err := m.rendererCall(callCtx, p.sessionID, "Page.captureScreenshot", params, &res); err != nil {
 		return nil, err
 	}
 	img, err := base64.StdEncoding.DecodeString(res.Data)
@@ -238,13 +245,13 @@ func (m *Manager) takeSnapshot(ctx context.Context, raw json.RawMessage) (any, e
 func (m *Manager) snapshotText(ctx context.Context, p *pageState) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
-	if err := m.client.Call(callCtx, p.sessionID, "Accessibility.enable", nil, nil); err != nil {
+	if err := m.rendererCall(callCtx, p.sessionID, "Accessibility.enable", nil, nil); err != nil {
 		return "", err
 	}
 	var res struct {
 		Nodes []axNode `json:"nodes"`
 	}
-	if err := m.client.Call(callCtx, p.sessionID, "Accessibility.getFullAXTree", nil, &res); err != nil {
+	if err := m.rendererCall(callCtx, p.sessionID, "Accessibility.getFullAXTree", nil, &res); err != nil {
 		return "", err
 	}
 

@@ -2,11 +2,13 @@ package tools
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/mcpserver"
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 )
 
 // dialogOnInput makes the fake behave like a real renderer blocked by a
@@ -148,5 +150,56 @@ func TestNormalClickUnaffected(t *testing.T) {
 	}
 	if n := f.callCount("Input.dispatchMouseEvent"); n != 3 {
 		t.Errorf("mouse events = %d, want 3", n)
+	}
+}
+
+// TestActionsWithDialogAlreadyOpenFailFast is the regression for the gap the
+// final test run found: v0.3.0 guarded input dispatch, but a click first
+// resolves the element's geometry, and DOM.getBoxModel blocks on a dialog
+// just as hard — the click waited out its whole 30s timeout instead of
+// saying a dialog was open.
+func TestActionsWithDialogAlreadyOpenFailFast(t *testing.T) {
+	tools := []struct {
+		name string
+		call func(m *Manager) (any, error)
+	}{
+		{"click", func(m *Manager) (any, error) { return callTool(t, m.click, `{"uid":"1_2"}`) }},
+		{"hover", func(m *Manager) (any, error) { return callTool(t, m.hover, `{"uid":"1_2"}`) }},
+		{"fill", func(m *Manager) (any, error) { return callTool(t, m.fill, `{"uid":"1_3","value":"x"}`) }},
+		{"take_snapshot", func(m *Manager) (any, error) { return callTool(t, m.takeSnapshot, `{}`) }},
+		{"take_screenshot", func(m *Manager) (any, error) { return callTool(t, m.takeScreenshot, `{}`) }},
+		{"evaluate_script", func(m *Manager) (any, error) {
+			return callTool(t, m.evaluateScript, `{"function":"() => 1"}`)
+		}},
+		{"upload_file", func(m *Manager) (any, error) {
+			return callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"`+t.TempDir()+`"}`)
+		}},
+	}
+	for _, tc := range tools {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeChrome(t, "about:blank")
+			m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+			snapshotFirst(t, m) // attaches sess-T1 and seeds uids
+
+			f.emit("sess-T1", "Page.javascriptDialogOpening",
+				map[string]any{"type": "confirm", "message": "blocked?"})
+			waitUntil(t, "dialog tracked", func() bool { return m.openDialog("sess-T1") != nil })
+
+			start := time.Now()
+			_, err := tc.call(m)
+			if elapsed := time.Since(start); elapsed > 3*time.Second {
+				t.Errorf("%s took %v; an open dialog must be reported, not waited out", tc.name, elapsed)
+			}
+			var te *toolerr.Error
+			if !errors.As(err, &te) || te.Code != toolerr.CodeDialogOpen {
+				t.Fatalf("%s: want dialog_open, got %v", tc.name, err)
+			}
+			if !strings.Contains(te.Message, "handle_dialog") {
+				t.Errorf("%s: error should point at handle_dialog: %q", tc.name, te.Message)
+			}
+			if te.Details["dialogType"] != "confirm" {
+				t.Errorf("%s: details should name the dialog: %v", tc.name, te.Details)
+			}
+		})
 	}
 }

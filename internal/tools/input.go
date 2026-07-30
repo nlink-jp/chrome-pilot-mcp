@@ -27,14 +27,14 @@ func (m *Manager) resolveUID(uid string) (uidTarget, error) {
 // content box in CSS pixels.
 func (m *Manager) elementCenter(ctx context.Context, t uidTarget) (float64, float64, error) {
 	// Best effort; some nodes (e.g. options) do not support it.
-	_ = m.client.Call(ctx, t.sessionID, "DOM.scrollIntoViewIfNeeded", t.nodeParams(), nil)
+	_ = m.rendererCall(ctx, t.sessionID, "DOM.scrollIntoViewIfNeeded", t.nodeParams(), nil)
 
 	var res struct {
 		Model struct {
 			Content []float64 `json:"content"`
 		} `json:"model"`
 	}
-	err := m.client.Call(ctx, t.sessionID, "DOM.getBoxModel", t.nodeParams(), &res)
+	err := m.rendererCall(ctx, t.sessionID, "DOM.getBoxModel", t.nodeParams(), &res)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -188,7 +188,7 @@ func (m *Manager) hover(ctx context.Context, raw json.RawMessage) (any, error) {
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
 	move := map[string]any{"type": "mouseMoved", "x": x, "y": y, "button": "none"}
-	if err := m.client.Call(callCtx, p.sessionID, "Input.dispatchMouseEvent", move, nil); err != nil {
+	if err := m.rendererCall(callCtx, p.sessionID, "Input.dispatchMouseEvent", move, nil); err != nil {
 		return nil, err
 	}
 	return m.finishInput(ctx, p, map[string]any{"hovered": args.UID}, args.IncludeSnapshot)
@@ -289,7 +289,7 @@ func (m *Manager) fillElement(ctx context.Context, uid, value string) error {
 			ObjectID string `json:"objectId"`
 		} `json:"object"`
 	}
-	err = m.client.Call(callCtx, t.sessionID, "DOM.resolveNode", t.nodeParams(), &resolved)
+	err = m.rendererCall(callCtx, t.sessionID, "DOM.resolveNode", t.nodeParams(), &resolved)
 	if err != nil {
 		return err
 	}
@@ -302,7 +302,7 @@ func (m *Manager) fillElement(ctx context.Context, uid, value string) error {
 			Text string `json:"text"`
 		} `json:"exceptionDetails"`
 	}
-	err = m.client.Call(callCtx, t.sessionID, "Runtime.callFunctionOn", map[string]any{
+	err = m.rendererCall(callCtx, t.sessionID, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            resolved.Object.ObjectID,
 		"functionDeclaration": fillFunction,
 		"arguments":           []map[string]any{{"value": value}},
@@ -453,7 +453,7 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	defer cancel()
 	fileParams := t.nodeParams()
 	fileParams["files"] = []string{args.FilePath}
-	err = m.client.Call(callCtx, t.sessionID, "DOM.setFileInputFiles", fileParams, nil)
+	err = m.rendererCall(callCtx, t.sessionID, "DOM.setFileInputFiles", fileParams, nil)
 	if err != nil {
 		return nil, err
 	}

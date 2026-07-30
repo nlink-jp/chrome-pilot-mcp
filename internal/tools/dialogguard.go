@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 )
 
 // Input dispatch while a JavaScript dialog is open.
@@ -50,6 +52,29 @@ func (m *Manager) callGuarded(ctx context.Context, sessionID, method string, par
 	case <-ctx.Done():
 		return nil, mapErr(ctx.Err())
 	}
+}
+
+// rendererCall issues a CDP call that needs the renderer's main thread —
+// DOM geometry, accessibility, script evaluation, screenshots. An open
+// dialog blocks that thread, so such a call would otherwise wait out its
+// whole timeout: clicking with a dialog already open hung for 30s in
+// DOM.getBoxModel, before the guarded input dispatch was ever reached.
+// A dialog is a precondition failure here, reported as such.
+func (m *Manager) rendererCall(ctx context.Context, sessionID, method string, params, result any) error {
+	d, err := m.callGuarded(ctx, sessionID, method, params, result)
+	if err != nil {
+		return err
+	}
+	if d != nil {
+		return toolerr.Newf(toolerr.CodeDialogOpen,
+			"a %s dialog is open and the page is blocked; call handle_dialog to continue", d.Type).
+			WithDetails(map[string]any{
+				"dialogType": d.Type,
+				"message":    d.Message,
+				"blocked":    method,
+			})
+	}
+	return nil
 }
 
 // withDialogNote annotates a tool result when a dialog interrupted it, so

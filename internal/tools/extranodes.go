@@ -91,7 +91,7 @@ func (m *Manager) extraInteractiveNodes(ctx context.Context, p *pageState, seq, 
 			Value []extraNode `json:"value"`
 		} `json:"result"`
 	}
-	err := m.client.Call(ctx, p.sessionID, "Runtime.evaluate", map[string]any{
+	err := m.rendererCall(ctx, p.sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    "(" + strings.Replace(findExtraJS, "MAXEXTRA", fmt.Sprint(maxExtraNodes), 1) + ")()",
 		"returnByValue": true,
 	}, &found)
@@ -104,7 +104,7 @@ func (m *Manager) extraInteractiveNodes(ctx context.Context, p *pageState, seq, 
 	}
 	// Always drop the markers again, even if the correlation below fails.
 	defer func() {
-		_ = m.client.Call(ctx, p.sessionID, "Runtime.evaluate", map[string]any{
+		_ = m.rendererCall(ctx, p.sessionID, "Runtime.evaluate", map[string]any{
 			"expression": "(" + clearExtraJS + ")()", "returnByValue": true,
 		}, nil)
 	}()
@@ -114,13 +114,13 @@ func (m *Manager) extraInteractiveNodes(ctx context.Context, p *pageState, seq, 
 			NodeID int64 `json:"nodeId"`
 		} `json:"root"`
 	}
-	if err := m.client.Call(ctx, p.sessionID, "DOM.getDocument", map[string]any{"depth": 0}, &doc); err != nil {
+	if err := m.rendererCall(ctx, p.sessionID, "DOM.getDocument", map[string]any{"depth": 0}, &doc); err != nil {
 		return "", err
 	}
 	var sel struct {
 		NodeIDs []int64 `json:"nodeIds"`
 	}
-	err = m.client.Call(ctx, p.sessionID, "DOM.querySelectorAll", map[string]any{
+	err = m.rendererCall(ctx, p.sessionID, "DOM.querySelectorAll", map[string]any{
 		"nodeId": doc.Root.NodeID, "selector": "[" + extraMarkAttr + "]",
 	}, &sel)
 	if err != nil {

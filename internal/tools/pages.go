@@ -248,7 +248,7 @@ func (m *Manager) documentReadyState(ctx context.Context, sessionID string) (str
 			Value string `json:"value"`
 		} `json:"result"`
 	}
-	err := m.client.Call(callCtx, sessionID, "Runtime.evaluate", map[string]any{
+	err := m.rendererCall(callCtx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    "document.readyState",
 		"returnByValue": true,
 	}, &res)
@@ -366,7 +366,7 @@ func (m *Manager) evalBool(ctx context.Context, sessionID, expr string) (bool, e
 			Value bool `json:"value"`
 		} `json:"result"`
 	}
-	err := m.client.Call(callCtx, sessionID, "Runtime.evaluate", map[string]any{
+	err := m.rendererCall(callCtx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    expr,
 		"returnByValue": true,
 	}, &res)
