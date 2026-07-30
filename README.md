@@ -45,7 +45,13 @@ Notable behaviors:
   until it is handled. The tool returns immediately with the dialog's
   type and message; call `handle_dialog` to continue. Acting on a page
   whose dialog is already open fails fast with `dialog_open` instead —
-  the action never reached the page.
+  the action never reached the page, and `details.blocked` names the CDP
+  call that would have hung.
+- A blocked page can still be inspected. `list_pages`,
+  `list_console_messages`, `get_console_message`, `list_network_requests`
+  and `get_network_request` read recorded state rather than the page
+  itself, so they keep answering while a dialog holds the renderer — which
+  is exactly when you want to know what the page logged.
 - `wait_for` takes either `text` or a `selector` with a `state`
   (`visible`, `hidden`, `present`, `absent`).
 - `list_console_messages` / `list_network_requests` return `lastMsgId` /

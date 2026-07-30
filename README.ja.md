@@ -44,8 +44,14 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
 - 操作が `alert`/`confirm`/`prompt` を開いた場合、ページは処理されるまで
   停止します。ツールはダイアログの種類とメッセージを付けて即座に戻るので、
   `handle_dialog` で続行してください。既にダイアログが開いているページを
-  操作した場合は `dialog_open` エラーで即座に失敗します (操作はページに
-  届いていません)。
+  操作した場合は `dialog_open` エラーで即座に失敗します (操作はページには
+  届いておらず、`details.blocked` に停止するはずだった CDP 呼び出しが
+  入ります)。
+- ブロック中のページも調査はできます。`list_pages` /
+  `list_console_messages` / `get_console_message` /
+  `list_network_requests` / `get_network_request` はページ本体ではなく
+  記録済みの状態を読むため、ダイアログがレンダラーを止めている間も応答
+  します。「何がログに出ていたか」を知りたいのはまさにその状況です。
 - `wait_for` は `text` か、`selector` + `state`
   (`visible` / `hidden` / `present` / `absent`) のどちらかを取ります。
 - `list_console_messages` / `list_network_requests` は `lastMsgId` /

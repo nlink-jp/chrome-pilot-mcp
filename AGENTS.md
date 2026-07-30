@@ -82,9 +82,16 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   clobber a configured setting. Never search `./config.toml` (ADR-0002).
 - Host filtering must stay startup-only: no tool may widen it at run
   time, or a prompt-injected agent could unlock itself.
-- Any CDP call that can trigger a JS dialog must go through
+- Any CDP call that needs the renderer must go through `rendererCall` /
   `callGuarded` (dialogguard.go): alert/confirm/prompt block the renderer,
-  so an unguarded call waits out its whole timeout on a successful action.
+  so an unguarded call waits out its whole timeout. Guarding only the input
+  dispatch was not enough — v0.3.0 still hung for 30s in DOM.getBoxModel,
+  which runs before the click. Add a new renderer-facing call and you must
+  route it through the guard too.
+- The diagnostic tools deliberately do NOT touch the renderer: list_pages
+  and the console/network readers answer from collector state, so they keep
+  working while a dialog blocks the page. Keep it that way — inspecting a
+  frozen page is when they matter most.
 - The accessibility tree is not the whole page. Unnamed clickable elements
   only reach the agent through the DOM pass in extranodes.go; keep the
   uid map able to hold a nodeId as well as a backendNodeId.
