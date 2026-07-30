@@ -724,29 +724,84 @@ func TestScreencastMaxFrames(t *testing.T) {
 	if res["frames"] != 2 {
 		t.Errorf("frames = %v, want the 2 allowed", res["frames"])
 	}
-	if res["truncated"] != "maxFrames" {
-		t.Errorf("truncated = %v, want maxFrames", res["truncated"])
+	if res["truncated"] != true || res["truncatedBy"] != "maxFrames" {
+		t.Errorf("truncated = %v / %v, want true / maxFrames", res["truncated"], res["truncatedBy"])
 	}
 	if res["droppedFrames"] != 3 {
 		t.Errorf("droppedFrames = %v, want 3", res["droppedFrames"])
 	}
 }
 
-func TestScreencastMaxDuration(t *testing.T) {
+// TestScreencastNotTruncatedIsExplicit: "was it truncated?" must be
+// answerable without inferring anything from a missing key.
+func TestScreencastNotTruncatedIsExplicit(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
 	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
 
-	if _, err := callTool(t, m.screencastStart, `{"maxDurationMs":1000}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{}`); err != nil {
+		t.Fatal(err)
+	}
+	f.emit("sess-T1", "Page.screencastFrame", map[string]any{
+		"data":      base64.StdEncoding.EncodeToString(encodeTestJPEG(t, 20, 10, color.RGBA{1, 2, 3, 255})),
+		"sessionId": 1, "metadata": map[string]any{"timestamp": 100.0},
+	})
+	waitUntil(t, "frame stored", func() bool {
+		m.col.mu.Lock()
+		defer m.col.mu.Unlock()
+		sc := m.col.screencasts["sess-T1"]
+		return sc != nil && len(sc.frames) == 1
+	})
+
+	out, err := callTool(t, m.screencastStop, `{}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := out.(map[string]any)
+	if res["truncated"] != false {
+		t.Errorf("truncated = %v, want false", res["truncated"])
+	}
+	if _, ok := res["truncatedBy"]; ok {
+		t.Errorf("truncatedBy must be absent when nothing truncated: %v", res["truncatedBy"])
+	}
+	if _, ok := res["recordedMs"]; !ok {
+		t.Errorf("recordedMs missing: %v", res)
+	}
+	if _, ok := res["gifDurationMs"]; !ok {
+		t.Errorf("gifDurationMs missing: %v", res)
+	}
+}
+
+// TestScreencastMaxDurationOnStaticPage is the regression for the reported
+// bug: the deadline was only evaluated when a frame arrived, so a page that
+// stopped repainting never hit maxDurationMs at all.
+func TestScreencastMaxDurationOnStaticPage(t *testing.T) {
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+
+	if _, err := callTool(t, m.screencastStart, `{"maxDurationMs":150}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
-	// Timestamps are seconds: 0s, 0.5s (kept) then 2s (past the 1s budget).
-	for i, ts := range []float64{100.0, 100.5, 102.0} {
-		f.emit("sess-T1", "Page.screencastFrame", map[string]any{
-			"data":      base64.StdEncoding.EncodeToString(encodeTestJPEG(t, 20, 10, color.RGBA{0, byte(i * 60), 0, 255})),
-			"sessionId": i + 1,
-			"metadata":  map[string]any{"timestamp": ts},
-		})
-	}
+	// One frame, then nothing at all — exactly the static-page case.
+	f.emit("sess-T1", "Page.screencastFrame", map[string]any{
+		"data":      base64.StdEncoding.EncodeToString(encodeTestJPEG(t, 20, 10, color.RGBA{255, 0, 0, 255})),
+		"sessionId": 1, "metadata": map[string]any{"timestamp": 100.0},
+	})
+
+	// The deadline must fire on its own, with no further frames.
+	waitUntil(t, "deadline stops collection", func() bool {
+		m.col.mu.Lock()
+		defer m.col.mu.Unlock()
+		sc := m.col.screencasts["sess-T1"]
+		return sc != nil && !sc.collecting && sc.limitHit == "maxDurationMs"
+	})
+	// Chrome is told to stop as well, rather than sending frames we discard.
+	waitUntil(t, "Chrome told to stop", func() bool { return f.callCount("Page.stopScreencast") >= 1 })
+
+	// A frame arriving after the deadline is counted, not stored.
+	f.emit("sess-T1", "Page.screencastFrame", map[string]any{
+		"data":      base64.StdEncoding.EncodeToString(encodeTestJPEG(t, 20, 10, color.RGBA{0, 0, 255, 255})),
+		"sessionId": 2, "metadata": map[string]any{"timestamp": 101.0},
+	})
 	waitUntil(t, "late frame dropped", func() bool {
 		m.col.mu.Lock()
 		defer m.col.mu.Unlock()
@@ -756,10 +811,14 @@ func TestScreencastMaxDuration(t *testing.T) {
 
 	out, err := callTool(t, m.screencastStop, `{}`)
 	if err != nil {
-		t.Fatalf("screencast_stop: %v", err)
+		t.Fatalf("screencast_stop must still work after the deadline: %v", err)
 	}
-	if res := out.(map[string]any); res["truncated"] != "maxDurationMs" {
-		t.Errorf("truncated = %v, want maxDurationMs", res["truncated"])
+	res := out.(map[string]any)
+	if res["truncated"] != true || res["truncatedBy"] != "maxDurationMs" {
+		t.Errorf("truncated = %v / %v", res["truncated"], res["truncatedBy"])
+	}
+	if res["frames"] != 1 {
+		t.Errorf("frames = %v, want the single frame captured before the deadline", res["frames"])
 	}
 }
 

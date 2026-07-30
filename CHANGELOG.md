@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.0] - 2026-07-30
+
+From an external test report covering all 27 tools.
+
+### Fixed
+
+- **`emulate` now clears the user-agent override when it is omitted.** Every
+  other dimension was reset by a bare `emulate {}`, but a user agent set
+  earlier survived — and the response dropped the `userAgent` key, so the
+  reset looked like it had happened. Requests kept going out with the stale
+  UA. `applied` now names every dimension and its effective value, so a
+  reset is never ambiguous
+- **`screencast_start`'s `maxDurationMs` is enforced by a deadline.** The
+  limit was only checked when a frame arrived, so a page that stopped
+  repainting never hit it and recorded past the budget. `screencast_stop`
+  now always reports `truncated` (with `truncatedBy` when true), and
+  separates `recordedMs` (wall-clock span of the frames) from
+  `gifDurationMs` (how long the GIF plays)
+- **`take_snapshot` reports `checked` and `disabled`.** A checkbox rendered
+  identically whether or not it was ticked, so verifying a toggle required
+  `evaluate_script`. `disabled=true` is reported too, since it explains an
+  element that does not respond
+- Navigation no longer reports a timeout for a page that did load: if the
+  load event is missed, `document.readyState` decides, and the result
+  carries a note
+
+### Changed
+
+- `drag`'s description was wrong. Chrome turns the mouse sequence into a
+  native drag, so HTML5 `draggable` elements and `ondrop` handlers **do**
+  fire — verified against a plain div. Only DnD built on raw pointer events
+  with its own thresholds may need finer steps
+- `emulate`'s `extraHttpHeaders` documents its shape (`{"X-Custom":"value"}`)
+  and the error message shows it; the parameter remains the one dimension an
+  omitted value leaves unchanged
+- `emulate` notes that clearing `Offline` makes Chrome reload the error page
+  on its own, so a URL that failed while offline can end up looking loaded
+- The "no frames captured" error explains that Chrome only emits frames when
+  the page repaints, and names the limit that ended the recording
+
 ## [0.2.0] - 2026-07-30
 
 Everything here came out of driving v0.1.0 as a real MCP client.
@@ -77,5 +117,6 @@ directly and driving the Chrome you already have installed.
   on an ephemeral port, or `--attach`ed to an existing loopback endpoint.
   Nothing is downloaded at run time
 
+[0.3.0]: https://github.com/nlink-jp/chrome-pilot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nlink-jp/chrome-pilot-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nlink-jp/chrome-pilot-mcp/releases/tag/v0.1.0

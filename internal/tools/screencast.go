@@ -52,25 +52,25 @@ func (m *Manager) handleScreencastFrame(sessionID string, params json.RawMessage
 
 	m.col.mu.Lock()
 	sc := m.col.screencasts[sessionID]
-	if sc != nil && sc.active {
+	if sc != nil && sc.collecting {
 		img, decErr := base64.StdEncoding.DecodeString(p.Data)
 		switch {
 		case decErr != nil:
 			sc.dropped++
 		case sc.maxFrames > 0 && len(sc.frames) >= sc.maxFrames:
 			sc.dropped++
+			sc.collecting = false
 			sc.limitHit = "maxFrames"
 		case sc.bytes+len(img) > sc.maxBytes:
 			sc.dropped++
+			sc.collecting = false
 			sc.limitHit = "memory budget"
-		case sc.maxDurationMS > 0 && len(sc.frames) > 0 &&
-			(p.Metadata.Timestamp-sc.frames[0].timestamp)*1000 > float64(sc.maxDurationMS):
-			sc.dropped++
-			sc.limitHit = "maxDurationMs"
 		default:
 			sc.frames = append(sc.frames, screencastFrame{data: img, timestamp: p.Metadata.Timestamp})
 			sc.bytes += len(img)
 		}
+	} else if sc != nil && sc.active {
+		sc.dropped++
 	}
 	m.col.mu.Unlock()
 
@@ -113,12 +113,33 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 	if maxFrames <= 0 {
 		maxFrames = maxScreencastFrame
 	}
-	m.col.screencasts[p.sessionID] = &screencastState{
+	state := &screencastState{
 		active:        true,
+		collecting:    true,
 		filePath:      args.FilePath,
 		maxFrames:     maxFrames,
 		maxBytes:      defaultScreencastMaxBytes,
 		maxDurationMS: args.MaxDurationMS,
+	}
+	m.col.screencasts[p.sessionID] = state
+	// A wall-clock deadline must not depend on frames arriving: a page that
+	// stops repainting sends none, so a frame-arrival check would never fire
+	// and the limit was silently ignored on static pages.
+	if args.MaxDurationMS > 0 {
+		sess := p.sessionID
+		state.stopTimer = time.AfterFunc(time.Duration(args.MaxDurationMS)*time.Millisecond, func() {
+			m.col.mu.Lock()
+			if sc := m.col.screencasts[sess]; sc == state && sc.collecting {
+				sc.collecting = false
+				sc.limitHit = "maxDurationMs"
+			}
+			m.col.mu.Unlock()
+			// Tell Chrome to stop too, so it is not producing frames we
+			// would only throw away.
+			ctx, cancel := context.WithTimeout(context.Background(), defaultCallTimeout)
+			defer cancel()
+			_ = m.client.Call(ctx, sess, "Page.stopScreencast", nil, nil)
+		})
 	}
 	m.col.mu.Unlock()
 
@@ -170,6 +191,10 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 		return nil, toolerr.New(toolerr.CodeScreencastNotActive, "no screencast is recording on the selected page")
 	}
 	sc.active = false
+	sc.collecting = false
+	if sc.stopTimer != nil {
+		sc.stopTimer.Stop()
+	}
 	frames := sc.frames
 	dropped := sc.dropped
 	limitHit := sc.limitHit
@@ -183,7 +208,17 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 		return nil, err
 	}
 	if len(frames) == 0 {
-		return nil, toolerr.New(toolerr.CodeScreencastNotActive, "no frames were captured (was the page repainting?)")
+		// Chrome only emits frames when the page paints, so a completely
+		// static page yields none. Say which limit (if any) ended the
+		// recording, otherwise this looks like a failure of the tool.
+		msg := "no frames were captured: Chrome only sends frames when the page repaints, and this page did not"
+		if limitHit != "" {
+			msg += " before the " + limitHit + " limit stopped the recording"
+		}
+		return nil, toolerr.New(toolerr.CodeScreencastNotActive, msg).WithDetails(map[string]any{
+			"truncatedBy": limitHit,
+			"hint":        "interact with the page or navigate while recording, or raise maxDurationMs",
+		})
 	}
 
 	if filePath == "" {
@@ -209,12 +244,23 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "encode gif: %v", err)
 	}
 
+	// recordedMs is the wall-clock span the frames cover; gifDurationMs is
+	// how long the GIF plays. They differ (a still page yields few frames
+	// with long delays), and reporting only one of them was confusing.
+	recordedMS := 0
+	if n := len(frames); n > 1 {
+		recordedMS = int((frames[n-1].timestamp - frames[0].timestamp) * 1000)
+	}
 	out := map[string]any{
-		"path":       filePath,
-		"frames":     len(g.Image),
-		"durationMs": stats.durationMS,
-		"width":      g.Config.Width,
-		"height":     g.Config.Height,
+		"path":          filePath,
+		"frames":        len(g.Image),
+		"recordedMs":    recordedMS,
+		"gifDurationMs": stats.durationMS,
+		"width":         g.Config.Width,
+		"height":        g.Config.Height,
+		// Always present, so "was it truncated?" never has to be inferred
+		// from a missing key.
+		"truncated": limitHit != "",
 	}
 	if dropped > 0 {
 		out["droppedFrames"] = dropped
@@ -229,7 +275,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 		out["note"] = "the viewport changed during recording; frames of other sizes were drawn into the largest frame's canvas"
 	}
 	if limitHit != "" {
-		out["truncated"] = limitHit
+		out["truncatedBy"] = limitHit
 		out["truncationNote"] = "recording stopped collecting frames when the " + limitHit + " limit was reached"
 	}
 	return out, nil

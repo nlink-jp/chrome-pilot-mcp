@@ -153,14 +153,20 @@ func (m *Manager) takeScreenshot(ctx context.Context, raw json.RawMessage) (any,
 // ---- take_snapshot ----
 
 type axNode struct {
-	NodeID           string   `json:"nodeId"`
-	Ignored          bool     `json:"ignored"`
-	Role             *axValue `json:"role"`
-	Name             *axValue `json:"name"`
-	Value            *axValue `json:"value"`
-	ChildIDs         []string `json:"childIds"`
-	BackendDOMNodeID int64    `json:"backendDOMNodeId"`
-	ParentID         string   `json:"parentId"`
+	NodeID           string       `json:"nodeId"`
+	Ignored          bool         `json:"ignored"`
+	Role             *axValue     `json:"role"`
+	Name             *axValue     `json:"name"`
+	Value            *axValue     `json:"value"`
+	Properties       []axProperty `json:"properties"`
+	ChildIDs         []string     `json:"childIds"`
+	BackendDOMNodeID int64        `json:"backendDOMNodeId"`
+	ParentID         string       `json:"parentId"`
+}
+
+type axProperty struct {
+	Name  string   `json:"name"`
+	Value *axValue `json:"value"`
 }
 
 type axValue struct {
@@ -173,6 +179,40 @@ func (v *axValue) str() string {
 	}
 	s, _ := v.Value.(string)
 	return s
+}
+
+// reportedProperties are the states rendered next to a node. checked is the
+// one an agent cannot otherwise see: a checkbox looked identical before and
+// after being ticked, so verifying a toggle needed evaluate_script. disabled
+// explains why an element does not respond to a click.
+var reportedProperties = []string{"checked", "disabled"}
+
+// stateSuffix renders the reported properties of a node, e.g. ` checked=true`.
+func (n axNode) stateSuffix() string {
+	var sb strings.Builder
+	for _, want := range reportedProperties {
+		for _, p := range n.Properties {
+			if p.Name != want || p.Value == nil {
+				continue
+			}
+			switch v := p.Value.Value.(type) {
+			case bool:
+				// Chrome reports disabled=false on everything; only the
+				// interesting direction is worth the space.
+				if want == "disabled" && !v {
+					continue
+				}
+				sb.WriteString(fmt.Sprintf(" %s=%t", want, v))
+			case string:
+				// Tri-state checkboxes report "mixed"/"true"/"false".
+				if v == "false" && want == "disabled" {
+					continue
+				}
+				sb.WriteString(fmt.Sprintf(" %s=%s", want, v))
+			}
+		}
+	}
+	return sb.String()
 }
 
 func (m *Manager) takeSnapshot(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -287,6 +327,7 @@ func formatAXTree(nodes []axNode, seq int) (string, map[string]int64, int) {
 		if val := n.Value.str(); val != "" {
 			line += fmt.Sprintf(" value=%q", val)
 		}
+		line += n.stateSuffix()
 		sb.WriteString(line)
 		sb.WriteByte('\n')
 		if sb.Len() > snapshotCharBudget {

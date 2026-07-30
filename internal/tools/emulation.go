@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -46,9 +47,15 @@ var networkPresets = map[string]map[string]any{
 	"disabled": {"offline": false, "downloadThroughput": -1, "uploadThroughput": -1, "latency": 0},
 }
 
-// emulate applies full emulation state per call (upstream semantics: an
-// omitted parameter resets that override), except extraHttpHeaders which is
-// only touched when present.
+// emulate applies the full emulation state on every call: an omitted
+// parameter resets that override. extraHttpHeaders is the one exception —
+// headers are deliberate, cross-navigation state, so they are only touched
+// when the parameter is present.
+//
+// The returned `applied` map names every dimension and its effective value,
+// including the ones that were reset. Reporting only what was passed made a
+// reset that had not happened look like it had (a user-agent override
+// survived `emulate {}` while its key vanished from the response).
 func (m *Manager) emulate(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
 		ColorScheme       string  `json:"colorScheme"`
@@ -56,7 +63,7 @@ func (m *Manager) emulate(ctx context.Context, raw json.RawMessage) (any, error)
 		ExtraHTTPHeaders  *string `json:"extraHttpHeaders"`
 		Geolocation       string  `json:"geolocation"`
 		NetworkConditions string  `json:"networkConditions"`
-		UserAgent         *string `json:"userAgent"`
+		UserAgent         string  `json:"userAgent"`
 		Viewport          string  `json:"viewport"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
@@ -115,6 +122,7 @@ func (m *Manager) emulate(ctx context.Context, raw json.RawMessage) (any, error)
 
 	// Geolocation ({} clears the override).
 	geoParams := map[string]any{}
+	applied["geolocation"] = "cleared"
 	if args.Geolocation != "" {
 		lat, lng, err := parseGeolocation(args.Geolocation)
 		if err != nil {
@@ -127,12 +135,15 @@ func (m *Manager) emulate(ctx context.Context, raw json.RawMessage) (any, error)
 		return nil, err
 	}
 
-	// User agent (only when provided; empty string resets).
-	if args.UserAgent != nil {
-		if err := m.client.Call(callCtx, sess, "Emulation.setUserAgentOverride", map[string]any{"userAgent": *args.UserAgent}, nil); err != nil {
-			return nil, err
-		}
-		applied["userAgent"] = *args.UserAgent
+	// User agent: an empty value (omitted or "") clears the override, the
+	// same way an omitted viewport does.
+	if err := m.client.Call(callCtx, sess, "Emulation.setUserAgentOverride",
+		map[string]any{"userAgent": args.UserAgent}, nil); err != nil {
+		return nil, err
+	}
+	applied["userAgent"] = args.UserAgent
+	if args.UserAgent == "" {
+		applied["userAgent"] = "cleared"
 	}
 
 	// Viewport ("WxHxDPR[,mobile][,touch][,landscape]"; omitted clears).
@@ -140,6 +151,7 @@ func (m *Manager) emulate(ctx context.Context, raw json.RawMessage) (any, error)
 		if err := m.client.Call(callCtx, sess, "Emulation.clearDeviceMetricsOverride", nil, nil); err != nil {
 			return nil, err
 		}
+		applied["viewport"] = "cleared"
 	} else {
 		vp, touch, err := parseEmulatedViewport(args.Viewport)
 		if err != nil {
@@ -154,18 +166,21 @@ func (m *Manager) emulate(ctx context.Context, raw json.RawMessage) (any, error)
 		applied["viewport"] = args.Viewport
 	}
 
-	// Extra HTTP headers (only when provided; "" clears).
+	// Extra HTTP headers: the one dimension an omitted parameter leaves
+	// alone, so say so explicitly rather than staying silent about it.
+	applied["extraHttpHeaders"] = "unchanged"
 	if args.ExtraHTTPHeaders != nil {
 		headers := map[string]string{}
 		if *args.ExtraHTTPHeaders != "" {
 			if err := json.Unmarshal([]byte(*args.ExtraHTTPHeaders), &headers); err != nil {
-				return nil, toolerr.Newf(toolerr.CodeInvalidArguments, "extraHttpHeaders must be a JSON object string: %v", err)
+				return nil, toolerr.Newf(toolerr.CodeInvalidArguments,
+					`extraHttpHeaders must be a JSON object string such as {"X-Custom":"value"}: %v`, err)
 			}
 		}
+		applied["extraHttpHeaders"] = fmt.Sprintf("%d header(s)", len(headers))
 		if err := m.client.Call(callCtx, sess, "Network.setExtraHTTPHeaders", map[string]any{"headers": headers}, nil); err != nil {
 			return nil, err
 		}
-		applied["extraHttpHeaders"] = len(headers)
 	}
 
 	return map[string]any{"applied": applied}, nil

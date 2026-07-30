@@ -49,6 +49,17 @@ Notable behaviors:
 - `list_console_messages` / `list_network_requests` return `lastMsgId` /
   `lastReqId`; pass them back as `sinceMsgId` / `sinceReqId` to fetch only
   what happened since.
+- Snapshots report `checked` on checkboxes and radios, and `disabled=true`
+  where it applies, so a toggle can be verified without a script.
+- `emulate` sets the whole emulation state on every call: an omitted
+  parameter is reset, so `emulate` with no arguments clears everything.
+  `extraHttpHeaders` is the exception — it is only touched when provided,
+  and takes a JSON object string like `{"X-Custom":"value"}`. After
+  clearing `Offline`, Chrome reloads the error page by itself, so a URL
+  that failed while offline can end up looking loaded.
+- `screencast` frames only exist when the page repaints; a completely
+  static page produces none. `screencast_stop` always reports `truncated`,
+  and distinguishes `recordedMs` from the GIF's own `gifDurationMs`.
 - `take_screenshot` saves to the workspace and returns the image inline
   when small enough; `screencast_stop` writes an animated GIF assembled
   entirely with the Go standard library.

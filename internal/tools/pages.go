@@ -88,12 +88,17 @@ func (m *Manager) newPage(ctx context.Context, raw json.RawMessage) (any, error)
 	}
 	m.mu.Unlock()
 
+	out := map[string]any{"index": m.indexOf(res.TargetID), "url": args.URL}
 	if args.URL != "" {
-		if err := m.navigateSession(ctx, p.sessionID, args.URL, timeoutFromMS(args.Timeout, defaultNavigateTimeout)); err != nil {
+		note, err := m.navigateSession(ctx, p.sessionID, args.URL, timeoutFromMS(args.Timeout, defaultNavigateTimeout))
+		if err != nil {
 			return nil, err
 		}
+		if note != "" {
+			out["note"] = note
+		}
 	}
-	return map[string]any{"index": m.indexOf(res.TargetID), "url": args.URL}, nil
+	return out, nil
 }
 
 func (m *Manager) indexOf(targetID string) int {
@@ -184,14 +189,25 @@ func (m *Manager) navigatePage(ctx context.Context, raw json.RawMessage) (any, e
 	if err != nil {
 		return nil, err
 	}
-	if err := m.navigateSession(ctx, p.sessionID, args.URL, timeoutFromMS(args.Timeout, defaultNavigateTimeout)); err != nil {
+	note, err := m.navigateSession(ctx, p.sessionID, args.URL, timeoutFromMS(args.Timeout, defaultNavigateTimeout))
+	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"url": args.URL, "loaded": true}, nil
+	out := map[string]any{"url": args.URL, "loaded": true}
+	if note != "" {
+		out["note"] = note
+	}
+	return out, nil
 }
 
 // navigateSession navigates and waits for the load event.
-func (m *Manager) navigateSession(ctx context.Context, sessionID, url string, timeout time.Duration) error {
+//
+// Missing the event is not the same as failing to navigate: a load event
+// can be delayed or slip past the waiter, and reporting a timeout for a
+// page that is in fact loaded is worse than useless — it tells the agent
+// to retry work that already succeeded. On timeout the document's own
+// readyState decides, and only a document that never got there is an error.
+func (m *Manager) navigateSession(ctx context.Context, sessionID, url string, timeout time.Duration) (loadNote string, err error) {
 	loaded := m.addWaiter(sessionID, "Page.loadEventFired")
 	defer m.removeWaiter(sessionID, "Page.loadEventFired", loaded)
 
@@ -201,20 +217,45 @@ func (m *Manager) navigateSession(ctx context.Context, sessionID, url string, ti
 		ErrorText string `json:"errorText"`
 	}
 	if err := m.client.Call(callCtx, sessionID, "Page.navigate", map[string]any{"url": url}, &res); err != nil {
-		return err
+		return "", err
 	}
 	if res.ErrorText != "" {
-		return toolerr.Newf(toolerr.CodeCDPError, "navigation to %s failed: %s", url, res.ErrorText)
+		return "", toolerr.Newf(toolerr.CodeCDPError, "navigation to %s failed: %s", url, res.ErrorText)
 	}
 
 	select {
 	case <-loaded:
-		return nil
+		return "", nil
 	case <-time.After(timeout):
-		return toolerr.Newf(toolerr.CodeTimeout, "load event not fired within %s for %s", timeout, url)
+		state, stateErr := m.documentReadyState(ctx, sessionID)
+		if stateErr == nil && (state == "complete" || state == "interactive") {
+			return fmt.Sprintf("the load event was not observed within %s, but the document reached readyState %q", timeout, state), nil
+		}
+		return "", toolerr.Newf(toolerr.CodeTimeout,
+			"load event not fired within %s for %s (document readyState %q)", timeout, url, state)
 	case <-ctx.Done():
-		return mapErr(ctx.Err())
+		return "", mapErr(ctx.Err())
 	}
+}
+
+// documentReadyState reads document.readyState, used to second-guess a
+// missed load event.
+func (m *Manager) documentReadyState(ctx context.Context, sessionID string) (string, error) {
+	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
+	defer cancel()
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	err := m.client.Call(callCtx, sessionID, "Runtime.evaluate", map[string]any{
+		"expression":    "document.readyState",
+		"returnByValue": true,
+	}, &res)
+	if err != nil {
+		return "", err
+	}
+	return res.Result.Value, nil
 }
 
 // waitFor blocks until a condition holds on the selected page.

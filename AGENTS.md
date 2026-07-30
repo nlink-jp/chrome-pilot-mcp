@@ -8,10 +8,12 @@ speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
 d'être: eliminate npm supply-chain risk — single static binary, `go.mod`
 with no `require`, nothing downloaded at runtime.
 
-**Current stage: released (v0.2.0), 27/27 tools.** All tools verified E2E
+**Current stage: released (v0.3.0), 27/27 tools.** All tools verified E2E
 against real headless Chrome, plus config.toml, profile persistence, and
-host-filter enforcement. v0.2.0 came entirely out of using v0.1.0 as an
-MCP client — see the CHANGELOG for what that turned up.
+host-filter enforcement. v0.2.0 came out of using v0.1.0 as an MCP client,
+v0.3.0 out of an external test report — see the CHANGELOG. Both rounds
+found defects the unit and scripted-E2E suites had passed, so **use the
+thing as a client before calling a release good**.
 
 Design background: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`) and
 the ADRs — 0001 host allow/block lists, 0002 config.toml, 0003 browser
@@ -86,3 +88,13 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 - The accessibility tree is not the whole page. Unnamed clickable elements
   only reach the agent through the DOM pass in extranodes.go; keep the
   uid map able to hold a nodeId as well as a backendNodeId.
+- `emulate` declares the whole emulation state: adding a dimension means
+  resetting it when omitted AND reporting it in `applied`. Reporting only
+  the parameters that were passed once made an unreset user agent look
+  cleared.
+- Limits must not be enforced only where events arrive. maxDurationMs was
+  checked on frame arrival, so a page that stopped painting never hit it;
+  wall-clock limits need a timer.
+- Never trust an event as the sole completion signal. Navigation falls back
+  to `document.readyState` because a missed load event was reported as a
+  failed navigation for a page that had loaded.

@@ -194,9 +194,12 @@ func (m *Manager) hover(ctx context.Context, raw json.RawMessage) (any, error) {
 	return m.finishInput(ctx, p, map[string]any{"hovered": args.UID}, args.IncludeSnapshot)
 }
 
-// drag performs a mouse-based drag from one element to another. HTML5
-// drag-and-drop (dragstart/drop event based UIs) is not simulated; sliders
-// and mouse-tracking UIs work.
+// drag performs a mouse-based drag from one element to another.
+//
+// Chrome synthesizes a native drag from the mouse sequence, so HTML5
+// dragstart/drop handlers do run — verified against a plain div with
+// ondragover/ondrop. Only DnD implementations that track raw pointer events
+// with their own movement thresholds may need more intermediate moves.
 func (m *Manager) drag(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
 		FromUID         string `json:"from_uid"`

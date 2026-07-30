@@ -49,6 +49,18 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
 - `list_console_messages` / `list_network_requests` は `lastMsgId` /
   `lastReqId` を返します。これを `sinceMsgId` / `sinceReqId` として渡すと
   前回以降の分だけ取得できます。
+- スナップショットは checkbox / radio の `checked` と、該当する場合の
+  `disabled=true` を出力します。スクリプトなしでトグル結果を検証できます。
+- `emulate` は呼び出しごとにエミュレーション状態全体を設定します。省略した
+  パラメータはリセットされるため、引数なしの `emulate` で全解除になります。
+  例外は `extraHttpHeaders` で、渡した時のみ変更され、値は
+  `{"X-Custom":"value"}` のような JSON オブジェクト文字列です。なお
+  `Offline` を解除すると Chrome がエラーページを自動リロードするため、
+  オフライン中に失敗した URL が読み込み済みに見えることがあります。
+- screencast のフレームはページの再描画時にのみ発生します。完全に静止した
+  ページでは 1 枚も得られません。`screencast_stop` は常に `truncated` を
+  返し、`recordedMs` (実時間) と `gifDurationMs` (GIF の再生時間) を
+  区別します。
 - `take_screenshot` は workspace に保存しつつ、小さければ画像を inline
   でも返します。`screencast_stop` は Go 標準ライブラリのみでアニメーション
   GIF を合成します。

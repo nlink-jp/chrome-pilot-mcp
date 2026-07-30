@@ -145,7 +145,7 @@ func registerInputTools(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "drag",
-		Description: "Drags one element onto another with mouse events. (HTML5 dragstart/drop-based UIs are not simulated.)",
+		Description: "Drags one element onto another with a mouse press, move and release. Chrome turns that sequence into a native drag, so HTML5 draggable elements and ondrop handlers do fire; sliders and other mouse-tracking UIs work directly. Drag-and-drop built on raw pointer events with its own thresholds may need finer steps than this single move.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"from_uid":{"type":"string","description":"The uid of the element to drag."},
 			"to_uid":{"type":"string","description":"The uid of the element to drop into."},
@@ -263,14 +263,14 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "emulate",
-		Description: "Emulates device/environment conditions on the selected page: color scheme, CPU throttling, network throttling, geolocation, user agent, viewport, extra HTTP headers. Omitted parameters are reset (extraHttpHeaders: only touched when provided; \"\" clears).",
+		Description: "Emulates device/environment conditions on the selected page: color scheme, CPU throttling, network throttling, geolocation, user agent, viewport, extra HTTP headers. Every call sets the whole emulation state, so an omitted parameter is reset — call it with no arguments to clear everything. The one exception is extraHttpHeaders, which is only touched when provided. The response reports the effective value of every dimension. Note: after clearing \"Offline\", Chrome reloads the error page on its own, so a URL that failed while offline can end up looking loaded.",
 		InputSchema: schema(`{"type":"object","properties":{
-			"colorScheme":{"type":"string","enum":["dark","light","auto"],"description":"Emulate dark or light mode; \"auto\" resets."},
+			"colorScheme":{"type":"string","enum":["dark","light","auto"],"description":"Emulate dark or light mode; \"auto\" or omitted resets."},
 			"cpuThrottlingRate":{"type":"number","description":"CPU slowdown factor. Omit or 1 to disable."},
-			"extraHttpHeaders":{"type":"string","description":"Extra HTTP headers as a JSON object string. Empty string clears."},
+			"extraHttpHeaders":{"type":"string","description":"Extra HTTP headers as a JSON object string, e.g. {\"X-Custom\":\"value\"}. Empty string clears them; omitting leaves them unchanged."},
 			"geolocation":{"type":"string","description":"\"<latitude>,<longitude>\" to emulate. Omit to clear."},
 			"networkConditions":{"type":"string","enum":["Offline","Slow 3G","Fast 3G","Slow 4G","Fast 4G"],"description":"Throttle network. Omit to disable."},
-			"userAgent":{"type":"string","description":"User agent override. Empty string clears."},
+			"userAgent":{"type":"string","description":"User agent override. Omit or pass an empty string to clear it."},
 			"viewport":{"type":"string","description":"\"<width>x<height>[x<dpr>][,mobile][,touch][,landscape]\". Omit to clear."}
 		}}`),
 	}, wrap(m.emulate))

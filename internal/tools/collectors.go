@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Collector state: passive per-session recordings fed by CDP events.
@@ -72,18 +73,23 @@ type screencastFrame struct {
 }
 
 type screencastState struct {
-	active   bool
-	filePath string
-	frames   []screencastFrame
-	dropped  int
-	bytes    int
+	// active means the recording exists and screencast_stop can end it.
+	active bool
+	// collecting means frames are still being accepted. A limit stops
+	// collection without ending the recording, so stop still reports.
+	collecting bool
+	filePath   string
+	frames     []screencastFrame
+	dropped    int
+	bytes      int
 
-	// Limits, applied as frames arrive.
 	maxFrames     int
 	maxBytes      int
 	maxDurationMS int
-	// limitHit names the limit that first stopped capture, for the report.
+	// limitHit names the limit that stopped capture, for the report.
 	limitHit string
+	// stopTimer enforces maxDurationMS independently of frame arrival.
+	stopTimer *time.Timer
 }
 
 func (c *collectors) init() {
