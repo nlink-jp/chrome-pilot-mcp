@@ -24,6 +24,7 @@ profiles (all Accepted).
 ```bash
 make build    # → dist/chrome-pilot-mcp (never `go build` directly)
 make test     # go test ./...
+make test-linux # same suite on Linux (container)
 make package  # release archives (zip/tar.gz) + notarization
 make verify-release  # gate: .notarized marker + freshness (run before upload)
 make brew     # after package: render the formula into the local homebrew-tap
