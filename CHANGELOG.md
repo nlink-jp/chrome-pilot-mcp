@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.1] - 2026-09-13
+
+### Fixed
+
+- **`take_screenshot` and `screencast_start` declared `work_dir` without
+  requiring it.** The handlers have required it since 0.5.0, so the schema told
+  the model the argument was optional and the call then failed. Both schemas
+  mark it required, and `take_screenshot`'s description names the `work_dir`
+  rather than "the workspace".
+- The RFP still listed `--workspace-root` among the flags; it is annotated as
+  withdrawn, in both languages.
+
+### Added
+
+- A contract test walking every registered tool: no retired spelling in a
+  schema *or* a description, `work_dir` required wherever it is declared, and
+  the two path-returning tools declaring it at all. ADR-0005 asked for this
+  test; the release shipped without it, which is why the missing `required`
+  went out.
+
 ## [0.5.0] - 2026-09-13
 
 ### Changed

@@ -79,12 +79,12 @@ type screencastState struct {
 	// collection without ending the recording, so stop still reports.
 	collecting bool
 	filePath   string
-	// workspaceRoot is the root screencast_start was given, kept because
-	// the file is written at stop time (ADR-0004).
-	workspaceRoot string
-	frames        []screencastFrame
-	dropped       int
-	bytes         int
+	// workDir is the directory screencast_start was given, kept because the
+	// file is written at stop time (ADR-0004, renamed by ADR-0005).
+	workDir string
+	frames  []screencastFrame
+	dropped int
+	bytes   int
 
 	maxFrames     int
 	maxBytes      int

@@ -62,6 +62,10 @@ func (s *Server) RegisterTool(t Tool, h ToolHandler) {
 	s.handlers[t.Name] = h
 }
 
+// Tools returns the registered tool descriptors, in registration order. It
+// exists so a test can walk what the model is actually shown.
+func (s *Server) Tools() []Tool { return s.tools }
+
 // Serve reads requests in a loop until ctx is canceled or stdin returns EOF.
 func (s *Server) Serve(ctx context.Context) error {
 	for {

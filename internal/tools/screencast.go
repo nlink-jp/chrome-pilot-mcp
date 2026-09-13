@@ -125,7 +125,7 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 		active:        true,
 		collecting:    true,
 		filePath:      args.FilePath,
-		workspaceRoot: wsRoot,
+		workDir:       wsRoot,
 		maxFrames:     maxFrames,
 		maxBytes:      defaultScreencastMaxBytes,
 		maxDurationMS: args.MaxDurationMS,
@@ -208,7 +208,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	dropped := sc.dropped
 	limitHit := sc.limitHit
 	filePath := sc.filePath
-	wsRoot := sc.workspaceRoot
+	wsRoot := sc.workDir
 	delete(m.col.screencasts, p.sessionID)
 	m.col.mu.Unlock()
 

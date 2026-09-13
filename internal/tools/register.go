@@ -98,13 +98,13 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "take_screenshot",
-		Description: "Takes a screenshot of the selected page, saves it to the workspace, and returns the path (plus the image inline when small enough).",
+		Description: "Takes a screenshot of the selected page, saves it under the work_dir you name, and returns the path (plus the image inline when small enough).",
 		InputSchema: schema(`{"type":"object","properties":{
 			"format":{"type":"string","enum":["png","jpeg"],"description":"Image format. Default png."},
 			"quality":{"type":"integer","description":"JPEG quality 0-100 (jpeg only)."},
 			"fullPage":{"type":"boolean","description":"Capture the full scrollable page instead of the viewport."},
 			` + workDirProp + `
-		}}`),
+		},"required":["work_dir"]}`),
 	}, wrap(m.takeScreenshot))
 
 	registerInputTools(s, m)
@@ -286,14 +286,14 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 		Name:        "screencast_start",
 		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop). A viewport change mid-recording is fine: frames are refitted rather than dropped.",
 		InputSchema: schema(`{"type":"object","properties":{
-			"filePath":{"type":"string","description":"Output .gif path. Defaults to the workspace."},
+			"filePath":{"type":"string","description":"Output .gif path. Defaults to a name under work_dir."},
 			` + workDirProp + `,
 			"maxWidth":{"type":"integer","description":"Max frame width in px. Default 800."},
 			"everyNthFrame":{"type":"integer","description":"Capture every Nth frame. Default 2."},
 			"quality":{"type":"integer","description":"JPEG capture quality 0-100. Default 70."},
 			"maxFrames":{"type":"integer","description":"Stop collecting after this many frames. Default 600."},
 			"maxDurationMs":{"type":"integer","description":"Stop collecting after this much wall-clock time. Unlimited by default."}
-		}}`),
+		},"required":["work_dir"]}`),
 	}, wrap(m.screencastStart))
 
 	s.RegisterTool(mcpserver.Tool{

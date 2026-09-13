@@ -47,7 +47,7 @@ CLI flags (server launch options):
 - `--executable-path <path>` — explicit Chrome binary
 - `--attach <ws://...|port>` — attach to an existing Chrome debugging
   endpoint (no self-launch)
-- `--workspace-root <dir>` — output directory for screenshots / GIFs
+- ~~`--workspace-root <dir>` — output directory for screenshots / GIFs~~ → withdrawn 2026-09-13 (ADR-0005): the output directory is the `work_dir` each call names, so the server owns none
 - `--viewport <WxH>` — initial viewport
 - `--version` — print version (required responder; brew test invokes it)
 

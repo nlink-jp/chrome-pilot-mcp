@@ -45,7 +45,7 @@ CLI フラグ (MCP サーバーとしての起動オプション):
 - `--executable-path <path>` — Chrome バイナリの明示指定
 - `--attach <ws://...|port>` — 既存 Chrome の debugging endpoint にアタッチ
   (自前起動せず)
-- `--workspace-root <dir>` — スクリーンショット / GIF などの出力先
+- ~~`--workspace-root <dir>` — スクリーンショット / GIF などの出力先~~ → 2026-09-13 撤回（ADR-0005）。出力先は呼び出しごとの `work_dir` で、サーバーは持たない
 - `--viewport <WxH>` — 初期ビューポート
 - `--version` — 版数表示 (brew test が叩くため必須応答)
 
