@@ -1,6 +1,6 @@
 # ADR-0004: Per-call workspace root for file-producing tools
 
-- Status: Accepted
+- Status: Accepted — superseded the same day by [ADR-0005](0005-work-dir-contract.md): the argument is `work_dir`, required, with no default and no launch flag
 - Date: 2026-09-13
 - Driver: magi
 - Depends on: ADR-0002 (config.toml schema)

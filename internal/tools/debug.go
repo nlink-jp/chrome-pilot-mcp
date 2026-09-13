@@ -91,15 +91,15 @@ func (m *Manager) evaluateScript(ctx context.Context, raw json.RawMessage) (any,
 
 func (m *Manager) takeScreenshot(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
-		Format        string `json:"format"`
-		Quality       int    `json:"quality"`
-		FullPage      bool   `json:"fullPage"`
-		WorkspaceRoot string `json:"workspaceRoot"`
+		Format   string `json:"format"`
+		Quality  int    `json:"quality"`
+		FullPage bool   `json:"fullPage"`
+		WorkDir  string `json:"work_dir"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
 	}
-	wsRoot, err := cleanWorkspaceRoot(args.WorkspaceRoot)
+	wsRoot, err := resolveWorkDir(ctx, args.WorkDir)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func (m *Manager) takeScreenshot(ctx context.Context, raw json.RawMessage) (any,
 		ext = "jpg"
 	}
 	name := fmt.Sprintf("shot-%s.%s", time.Now().Format("20060102-150405.000"), ext)
-	path, err := m.workspaceFileIn(wsRoot, "screenshots", name)
+	path, err := m.fileIn(wsRoot, "screenshots", name)
 	if err != nil {
 		return nil, toolerr.New(toolerr.CodeWorkspaceFailed, err.Error())
 	}

@@ -86,7 +86,7 @@ func (m *Manager) handleScreencastFrame(sessionID string, params json.RawMessage
 func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
 		FilePath      string `json:"filePath"`
-		WorkspaceRoot string `json:"workspaceRoot"`
+		WorkDir       string `json:"work_dir"`
 		MaxWidth      int    `json:"maxWidth"`
 		EveryNthFrame int    `json:"everyNthFrame"`
 		Quality       int    `json:"quality"`
@@ -103,7 +103,7 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 	// Validated here rather than at stop: the call that supplies a bad
 	// argument is the one that must be told, and a recording that only
 	// fails when it ends has already thrown away its frames.
-	wsRoot, err := cleanWorkspaceRoot(args.WorkspaceRoot)
+	wsRoot, err := resolveWorkDir(ctx, args.WorkDir)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 
 	if filePath == "" {
 		name := fmt.Sprintf("cast-%s.gif", time.Now().Format("20060102-150405"))
-		filePath, err = m.workspaceFileIn(wsRoot, "screencasts", name)
+		filePath, err = m.fileIn(wsRoot, "screencasts", name)
 		if err != nil {
 			return nil, toolerr.New(toolerr.CodeWorkspaceFailed, err.Error())
 		}

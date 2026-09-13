@@ -79,13 +79,14 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 - Never kill launched Chrome without giving it time to exit: it writes
   profile data during shutdown, and killing early silently drops
   localStorage/cookies from persistent profiles (browser.closeGrace).
-- The workspace root is per call first, startup second (ADR-0004):
-  `take_screenshot` / `screencast_start` take `workspaceRoot`, and
-  `workspaceFileIn` falls back to `--workspace-root` only when the call
-  omits it. A new file-producing tool must take the argument too — an agent
-  confined to its own directories cannot open what lands anywhere else, and
-  a path it cannot open is not a result. Validate the root where the
-  argument arrives (`cleanWorkspaceRoot`), not where the file is written.
+- The output directory is the caller's, named on every call and required
+  (ADR-0005, organization ADR-021): `take_screenshot` / `screencast_start` /
+  the debug tools take `work_dir`, resolved by `resolveWorkDir` (argument,
+  then the request's `_meta`, then an error). There is no server workspace
+  and no launch flag to fall back to. A new file-producing tool must take
+  the argument too — an agent confined to its own directories cannot open
+  what lands anywhere else, and a path it cannot open is not a result.
+  Validate where the argument arrives, not where the file is written.
 - Config precedence lives in `cmd.buildConfig`: only flags reported by
   `flag.Visit` override the file, so an unset flag's zero value can never
   clobber a configured setting. Never search `./config.toml` (ADR-0002).

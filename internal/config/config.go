@@ -21,7 +21,6 @@ type Config struct {
 	UserDataDir    string
 
 	// [workspace]
-	WorkspaceRoot string
 
 	// [security]
 	AllowHosts []string
@@ -102,7 +101,9 @@ func apply(cfg *Config, doc document) error {
 			"user_data_dir":   {str: &cfg.UserDataDir},
 		},
 		"workspace": {
-			"root": {str: &cfg.WorkspaceRoot},
+			// [workspace] root was removed in ADR-0005: the output directory
+			// is the work_dir each call names. A config still carrying it is
+			// reported rather than ignored.
 		},
 		"security": {
 			"allow_hosts": {list: &cfg.AllowHosts},
@@ -117,6 +118,11 @@ func apply(cfg *Config, doc document) error {
 			return fmt.Errorf("unknown section [%s] (known: %s)", section, knownNames(schema))
 		}
 		for key, v := range keys {
+			if section == "workspace" && key == "root" {
+				return fmt.Errorf("line %d: [workspace] root was removed in ADR-0005: "+
+					"the output directory is the work_dir each call names, so the server owns none. "+
+					"Delete the key (and the [workspace] section if it is now empty)", v.line)
+			}
 			bind, ok := sec[key]
 			if !ok {
 				return fmt.Errorf("line %d: unknown key %q in [%s] (known: %s)", v.line, key, section, keyNames(sec))

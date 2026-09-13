@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking: `workspaceRoot` is now `work_dir`, and it is required.** Every
+  file-producing tool (`take_screenshot`, `screencast_start`, the debug tools)
+  names the directory it writes into, and there is no default to fall back to.
+  See [ADR-0005](docs/en/adr/0005-work-dir-contract.md), which amends ADR-0004
+  the same day; organization ADR-021 settles the spelling fleet-wide.
+- **Breaking: the `--workspace-root` flag and the `[workspace] root` config key
+  are removed**, along with the temp-directory fallback. A config still carrying
+  the key fails at startup with the reason named. A call written for upstream
+  chrome-devtools-mcp now has to name `work_dir` too — the error says so.
+- The work directory must already exist; the server no longer creates it. A path
+  that is not there is a typo, and creating it silently would put the file
+  somewhere the caller is not looking.
+- A runtime may supply the directory instead of the model: the server reads
+  `_meta["jp.nlink/work_dir"]` when the argument is absent. The argument wins.
+
+### Added
+
+- `work_dir_required`, `work_dir_invalid`, `work_dir_not_found`,
+  `work_dir_not_writable`, `work_dir_denied` — the fleet's codes for the part of
+  the contract that failed.
+
 ## [0.4.0] - 2026-09-13
 
 ### Added

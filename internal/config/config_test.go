@@ -27,8 +27,6 @@ executable_path = "/opt/chrome/chrome"   # inline comment
 viewport        = "1280x800"
 profile         = "work"
 
-[workspace]
-root = "/tmp/cp-ws"
 
 [security]
 allow_hosts = ["example.com", "*.example.com"]
@@ -44,9 +42,6 @@ block_local = true
 	}
 	if cfg.Viewport != "1280x800" || cfg.Profile != "work" {
 		t.Errorf("viewport/profile = %q %q", cfg.Viewport, cfg.Profile)
-	}
-	if cfg.WorkspaceRoot != "/tmp/cp-ws" {
-		t.Errorf("workspace root = %q", cfg.WorkspaceRoot)
 	}
 	if !slices.Equal(cfg.AllowHosts, []string{"example.com", "*.example.com"}) {
 		t.Errorf("allow_hosts = %v", cfg.AllowHosts)
@@ -196,5 +191,25 @@ func TestDefaultPathIsNotCwd(t *testing.T) {
 	wd, _ := os.Getwd()
 	if filepath.Dir(p) == wd {
 		t.Errorf("default path must not resolve to the working directory")
+	}
+}
+
+// The removed key is named, not reported as merely unknown: an operator who
+// set an output directory and had it ignored would keep looking for files
+// that are not there (ADR-0005).
+func TestLoadNamesTheRemovedWorkspaceRoot(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[workspace]\nroot = \"/tmp/cp-ws\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("a config carrying [workspace] root must fail to load")
+	}
+	for _, want := range []string{"root", "work_dir", "ADR-0005"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
+		}
 	}
 }

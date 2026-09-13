@@ -552,7 +552,10 @@ func encodeTestJPEG(t *testing.T, w, h int, c color.Color) []byte {
 func TestScreencastGIF(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
 	ws := t.TempDir()
-	m := newTestManager(t, Config{WorkspaceRoot: ws}, f)
+	if resolved, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = resolved
+	}
+	m := newTestManager(t, Config{}, f)
 
 	// Stop without start.
 	_, err := callTool(t, m.screencastStop, `{}`)
@@ -561,7 +564,7 @@ func TestScreencastGIF(t *testing.T) {
 		t.Fatalf("want screencast_not_active, got %v", err)
 	}
 
-	if _, err := callTool(t, m.screencastStart, `{}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(ws)+`}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
 	start := f.callsOf("Page.startScreencast")
@@ -570,7 +573,7 @@ func TestScreencastGIF(t *testing.T) {
 	}
 
 	// Double start refused.
-	if _, err := callTool(t, m.screencastStart, `{}`); err == nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(ws)+`}`); err == nil {
 		t.Errorf("second screencast_start should fail")
 	}
 
@@ -635,9 +638,12 @@ func TestScreencastGIF(t *testing.T) {
 func TestScreencastRefitsResizedFrames(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
 	ws := t.TempDir()
-	m := newTestManager(t, Config{WorkspaceRoot: ws}, f)
+	if resolved, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = resolved
+	}
+	m := newTestManager(t, Config{}, f)
 
-	if _, err := callTool(t, m.screencastStart, `{}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(ws)+`}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
 	// Small frame, then two frames from a larger viewport.
@@ -697,9 +703,9 @@ func TestScreencastRefitsResizedFrames(t *testing.T) {
 
 func TestScreencastMaxFrames(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
-	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+	m := newTestManager(t, Config{}, f)
 
-	if _, err := callTool(t, m.screencastStart, `{"maxFrames":2}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(resolvedTempDir(t))+`,"maxFrames":2}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
 	for i := range 5 {
@@ -736,9 +742,9 @@ func TestScreencastMaxFrames(t *testing.T) {
 // answerable without inferring anything from a missing key.
 func TestScreencastNotTruncatedIsExplicit(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
-	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+	m := newTestManager(t, Config{}, f)
 
-	if _, err := callTool(t, m.screencastStart, `{}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(resolvedTempDir(t))+`}`); err != nil {
 		t.Fatal(err)
 	}
 	f.emit("sess-T1", "Page.screencastFrame", map[string]any{
@@ -776,9 +782,9 @@ func TestScreencastNotTruncatedIsExplicit(t *testing.T) {
 // stopped repainting never hit maxDurationMs at all.
 func TestScreencastMaxDurationOnStaticPage(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
-	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+	m := newTestManager(t, Config{}, f)
 
-	if _, err := callTool(t, m.screencastStart, `{"maxDurationMs":150}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(resolvedTempDir(t))+`,"maxDurationMs":150}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
 	// One frame, then nothing at all — exactly the static-page case.
@@ -826,7 +832,7 @@ func TestScreencastRejectsNonGIFPath(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
 	m := newTestManager(t, Config{}, f)
 
-	_, err := callTool(t, m.screencastStart, `{"filePath":"/tmp/x.webm"}`)
+	_, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(resolvedTempDir(t))+`,"filePath":"/tmp/x.webm"}`)
 	var te *toolerr.Error
 	if !errors.As(err, &te) || te.Code != toolerr.CodeInvalidArguments {
 		t.Fatalf("want invalid_arguments for .webm, got %v", err)

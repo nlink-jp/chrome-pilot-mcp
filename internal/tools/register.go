@@ -103,7 +103,7 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 			"format":{"type":"string","enum":["png","jpeg"],"description":"Image format. Default png."},
 			"quality":{"type":"integer","description":"JPEG quality 0-100 (jpeg only)."},
 			"fullPage":{"type":"boolean","description":"Capture the full scrollable page instead of the viewport."},
-			` + workspaceRootProp + `
+			` + workDirProp + `
 		}}`),
 	}, wrap(m.takeScreenshot))
 
@@ -113,11 +113,11 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 
 const includeSnapshotProp = `"includeSnapshot":{"type":"boolean","description":"Whether to include a fresh snapshot in the response. Default is false."}`
 
-// workspaceRootProp is the per-call output root shared by the tools that
+// workDirProp is the per-call output directory shared by the tools that
 // write a file (ADR-0004). The wording tells the caller why it would pass
 // one: the server's own workspace is chosen at startup, and an agent whose
 // file access is confined elsewhere cannot open what lands there.
-const workspaceRootProp = `"workspaceRoot":{"type":"string","description":"Absolute path to a directory you can read back; the file is written under it instead of the server's workspace. Pass your own session or working directory when you have one — the result comes back as a path, and a path you cannot open is worth nothing. Created if missing; no ~ expansion."}`
+const workDirProp = `"work_dir":{"type":"string","description":"Absolute path to a directory you can read back \u2014 your session or working directory. The file is written under it and comes back as a path, so a directory you cannot open leaves you holding a path to nothing. It must already exist; nothing here expands ~ or resolves a relative path."}`
 
 func registerInputTools(s *mcpserver.Server, m *Manager) {
 	s.RegisterTool(mcpserver.Tool{
@@ -287,7 +287,7 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop). A viewport change mid-recording is fine: frames are refitted rather than dropped.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"filePath":{"type":"string","description":"Output .gif path. Defaults to the workspace."},
-			` + workspaceRootProp + `,
+			` + workDirProp + `,
 			"maxWidth":{"type":"integer","description":"Max frame width in px. Default 800."},
 			"everyNthFrame":{"type":"integer","description":"Capture every Nth frame. Default 2."},
 			"quality":{"type":"integer","description":"JPEG capture quality 0-100. Default 70."},

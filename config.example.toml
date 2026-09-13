@@ -40,10 +40,10 @@ profile = ""
 # at your real Chrome profile is refused — use `attach` for that.
 user_data_dir = ""
 
-[workspace]
-# Where screenshots and screencast GIFs are written.
-# Empty means a fresh temp directory per run.
-root = ""
+# [workspace] is gone (ADR-0005). Screenshots and screencast GIFs are written
+# under the work_dir each call names — the server owns no output directory, and
+# a config still carrying [workspace] root fails at startup rather than having
+# it silently ignored.
 
 [security]
 # Host allow list. Setting ANY entry switches to default-deny: everything

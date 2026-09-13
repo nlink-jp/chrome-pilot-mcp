@@ -58,7 +58,16 @@ func Newf(code, format string, args ...any) *Error {
 // is a no-op for older clients (they fall back to inspecting Message), but
 // renaming an existing code is a breaking change.
 const (
-	CodeInvalidArguments    = "invalid_arguments"
+	CodeInvalidArguments = "invalid_arguments"
+
+	// Work directory, per organization ADR-021. Split out so a caller can
+	// tell "you did not pass one" from "it is not there" from "this server
+	// refuses to write there".
+	CodeWorkDirRequired     = "work_dir_required"
+	CodeWorkDirInvalid      = "work_dir_invalid"
+	CodeWorkDirNotFound     = "work_dir_not_found"
+	CodeWorkDirNotWritable  = "work_dir_not_writable"
+	CodeWorkDirDenied       = "work_dir_denied"
 	CodeMissingArgument     = "missing_argument"
 	CodeBrowserLaunchFailed = "browser_launch_failed"
 	CodeAttachFailed        = "attach_failed"

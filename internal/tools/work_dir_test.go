@@ -19,20 +19,27 @@ import (
 // it is created, and that an unusable root is refused on the call that
 // supplied it rather than when the file is written.
 
-func TestTakeScreenshotWorkspaceRoot(t *testing.T) {
+func TestTakeScreenshotWorkDir(t *testing.T) {
 	imgBytes := []byte("PNG-PAYLOAD")
 	f := newFakeChrome(t, "https://example.com/")
 	f.overrides["Page.captureScreenshot"] = func(sessionID string, params map[string]any) (any, string) {
 		return map[string]any{"data": base64.StdEncoding.EncodeToString(imgBytes)}, ""
 	}
-	configured := t.TempDir()
-	m := newTestManager(t, Config{WorkspaceRoot: configured}, f)
+	m := newTestManager(t, Config{}, f)
 
-	// A root that does not exist yet: the agent's session directory may be
-	// named before anything has been written to it.
+	// The caller's own directory, which always exists: the server no longer
+	// creates one, so a path that is not there is a typo (ADR-0005).
 	perCall := filepath.Join(t.TempDir(), "session-work")
+	if err := os.MkdirAll(perCall, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Compare against the resolved spelling: the server validates the work
+	// directory down to it and builds every path it returns from that.
+	if resolved, err := filepath.EvalSymlinks(perCall); err == nil {
+		perCall = resolved
+	}
 
-	out, err := callTool(t, m.takeScreenshot, `{"workspaceRoot":`+quote(perCall)+`}`)
+	out, err := callTool(t, m.takeScreenshot, `{"work_dir":`+quote(perCall)+`}`)
 	if err != nil {
 		t.Fatalf("take_screenshot: %v", err)
 	}
@@ -46,33 +53,30 @@ func TestTakeScreenshotWorkspaceRoot(t *testing.T) {
 	if want := filepath.Join(perCall, "screenshots"); filepath.Dir(meta.Path) != want {
 		t.Errorf("path = %q, want a file in %q", meta.Path, want)
 	}
-	if strings.HasPrefix(meta.Path, configured) {
-		t.Errorf("path %q fell back to the configured workspace", meta.Path)
-	}
 	got, err := os.ReadFile(meta.Path)
 	if err != nil || string(got) != string(imgBytes) {
 		t.Errorf("file contents mismatch: %v %q", err, got)
 	}
 }
 
-func TestWorkspaceRootMustBeAbsolute(t *testing.T) {
+func TestWorkDirMustBeAbsolute(t *testing.T) {
 	for _, root := range []string{"shots", "./shots", "~/shots"} {
 		f := newFakeChrome(t, "about:blank")
-		m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+		m := newTestManager(t, Config{}, f)
 
-		_, err := callTool(t, m.takeScreenshot, `{"workspaceRoot":`+quote(root)+`}`)
+		_, err := callTool(t, m.takeScreenshot, `{"work_dir":`+quote(root)+`}`)
 		var te *toolerr.Error
-		if !errors.As(err, &te) || te.Code != toolerr.CodeInvalidArguments {
-			t.Fatalf("take_screenshot %q: want invalid_arguments, got %v", root, err)
+		if !errors.As(err, &te) || te.Code != toolerr.CodeWorkDirInvalid {
+			t.Fatalf("take_screenshot %q: want work_dir_invalid, got %v", root, err)
 		}
 		if !strings.Contains(te.Message, "absolute") {
 			t.Errorf("message = %q, want it to name the requirement", te.Message)
 		}
 
 		// Refused at start, so no recording is left behind holding frames.
-		_, err = callTool(t, m.screencastStart, `{"workspaceRoot":`+quote(root)+`}`)
-		if !errors.As(err, &te) || te.Code != toolerr.CodeInvalidArguments {
-			t.Fatalf("screencast_start %q: want invalid_arguments, got %v", root, err)
+		_, err = callTool(t, m.screencastStart, `{"work_dir":`+quote(root)+`}`)
+		if !errors.As(err, &te) || te.Code != toolerr.CodeWorkDirInvalid {
+			t.Fatalf("screencast_start %q: want work_dir_invalid, got %v", root, err)
 		}
 		if _, err := callTool(t, m.screencastStop, `{}`); err == nil {
 			t.Errorf("screencast_start should not have started a recording")
@@ -80,13 +84,20 @@ func TestWorkspaceRootMustBeAbsolute(t *testing.T) {
 	}
 }
 
-func TestScreencastWorkspaceRoot(t *testing.T) {
+func TestScreencastWorkDir(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
-	configured := t.TempDir()
-	m := newTestManager(t, Config{WorkspaceRoot: configured}, f)
+	m := newTestManager(t, Config{}, f)
 	perCall := filepath.Join(t.TempDir(), "session-work")
+	if err := os.MkdirAll(perCall, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Compare against the resolved spelling: the server validates the work
+	// directory down to it and builds every path it returns from that.
+	if resolved, err := filepath.EvalSymlinks(perCall); err == nil {
+		perCall = resolved
+	}
 
-	if _, err := callTool(t, m.screencastStart, `{"workspaceRoot":`+quote(perCall)+`}`); err != nil {
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(perCall)+`}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
 	frame := encodeTestJPEG(t, 20, 10, color.RGBA{255, 0, 0, 255})
@@ -114,14 +125,22 @@ func TestScreencastWorkspaceRoot(t *testing.T) {
 	}
 }
 
-func TestScreencastFilePathBeatsWorkspaceRoot(t *testing.T) {
+func TestScreencastFilePathBeatsWorkDir(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
-	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+	m := newTestManager(t, Config{}, f)
 	perCall := filepath.Join(t.TempDir(), "session-work")
+	if err := os.MkdirAll(perCall, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Compare against the resolved spelling: the server validates the work
+	// directory down to it and builds every path it returns from that.
+	if resolved, err := filepath.EvalSymlinks(perCall); err == nil {
+		perCall = resolved
+	}
 	explicit := filepath.Join(t.TempDir(), "named", "cast.gif")
 
 	if _, err := callTool(t, m.screencastStart,
-		`{"filePath":`+quote(explicit)+`,"workspaceRoot":`+quote(perCall)+`}`); err != nil {
+		`{"filePath":`+quote(explicit)+`,"work_dir":`+quote(perCall)+`}`); err != nil {
 		t.Fatalf("screencast_start: %v", err)
 	}
 	frame := encodeTestJPEG(t, 20, 10, color.RGBA{0, 0, 255, 255})
@@ -153,4 +172,15 @@ func quote(s string) string {
 		panic(err)
 	}
 	return string(b)
+}
+
+// resolvedTempDir is a work directory in the spelling the server will report,
+// so a test can compare paths without caring that /var is a symlink here.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

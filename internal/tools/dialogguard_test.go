@@ -167,7 +167,9 @@ func TestActionsWithDialogAlreadyOpenFailFast(t *testing.T) {
 		{"hover", func(m *Manager) (any, error) { return callTool(t, m.hover, `{"uid":"1_2"}`) }},
 		{"fill", func(m *Manager) (any, error) { return callTool(t, m.fill, `{"uid":"1_3","value":"x"}`) }},
 		{"take_snapshot", func(m *Manager) (any, error) { return callTool(t, m.takeSnapshot, `{}`) }},
-		{"take_screenshot", func(m *Manager) (any, error) { return callTool(t, m.takeScreenshot, `{}`) }},
+		{"take_screenshot", func(m *Manager) (any, error) {
+			return callTool(t, m.takeScreenshot, `{"work_dir":`+quote(resolvedTempDir(t))+`}`)
+		}},
 		{"evaluate_script", func(m *Manager) (any, error) {
 			return callTool(t, m.evaluateScript, `{"function":"() => 1"}`)
 		}},
@@ -178,7 +180,7 @@ func TestActionsWithDialogAlreadyOpenFailFast(t *testing.T) {
 	for _, tc := range tools {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFakeChrome(t, "about:blank")
-			m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+			m := newTestManager(t, Config{}, f)
 			snapshotFirst(t, m) // attaches sess-T1 and seeds uids
 
 			f.emit("sess-T1", "Page.javascriptDialogOpening",

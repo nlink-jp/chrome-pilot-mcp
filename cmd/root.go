@@ -73,7 +73,6 @@ func buildConfig(args []string) (tools.Config, error) {
 	channel := fs.String("channel", "stable", "Chrome channel to launch: stable|beta|dev|canary")
 	execPath := fs.String("executable-path", "", "explicit Chrome binary (overrides --channel)")
 	attach := fs.String("attach", "", "attach to an existing Chrome debugging endpoint (ws://..., port, or host:port; loopback only) instead of launching")
-	workspaceRoot := fs.String("workspace-root", "", "output directory for screenshots etc. (default: a fresh temp dir)")
 	viewport := fs.String("viewport", "", "initial viewport as WxH, e.g. 1280x800")
 	profile := fs.String("profile", "", "named persistent browser profile (kept across runs; letters, digits, _ and - only)")
 	userDataDir := fs.String("user-data-dir", "", "explicit Chrome user-data-dir (persistent; exclusive with --profile)")
@@ -104,9 +103,6 @@ func buildConfig(args []string) (tools.Config, error) {
 	}
 	if set["attach"] {
 		fileCfg.Attach = *attach
-	}
-	if set["workspace-root"] {
-		fileCfg.WorkspaceRoot = *workspaceRoot
 	}
 	if set["viewport"] {
 		fileCfg.Viewport = *viewport
@@ -169,7 +165,6 @@ func toToolConfig(c config.Config) (tools.Config, error) {
 		Channel:        c.Channel,
 		ExecutablePath: c.ExecutablePath,
 		Attach:         c.Attach,
-		WorkspaceRoot:  c.WorkspaceRoot,
 		Profile:        c.Profile,
 		UserDataDir:    c.UserDataDir,
 		AllowHosts:     c.AllowHosts,

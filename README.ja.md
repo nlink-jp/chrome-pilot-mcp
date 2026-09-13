@@ -72,13 +72,11 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
 - `take_screenshot` は workspace に保存しつつ、小さければ画像を inline
   でも返します。`screencast_stop` は Go 標準ライブラリのみでアニメーション
   GIF を合成します。
-- `take_screenshot` と `screencast_start` は任意引数 `workspaceRoot`
-  (絶対パス) を取り、サーバーの workspace ではなくそのディレクトリ配下に
-  書き出します。呼び出し側が読めるパスが限られている場合に渡してください
-  — プロジェクトとセッションディレクトリに限定されたエージェントは、
-  サーバーの一時ディレクトリに残されたファイルを開けず、返ってきたパスは
-  無価値になります。ディレクトリは無ければ作成されます。省略した呼び出しの
-  既定は従来どおり `--workspace-root` です。
+- ファイルを産むツールはすべて**必須**の絶対パス `work_dir` を取り、その配下に
+  書きます。既定はありません —— プロジェクトとセッションディレクトリに封じ込め
+  られたエージェントは、サーバーの一時ディレクトリに置かれたファイルを開けず、
+  開けないパスは結果ではないからです。ディレクトリは既に存在している必要があり、
+  `~` の展開も相対パスの解決もここでは行われません。
 - `drag` はマウスイベントベースです (HTML5 dragstart/drop ベースの UI は
   シミュレートしません)。
 - console / network の記録は、ツールがページに最初に触れた時点から
@@ -133,7 +131,6 @@ chrome-pilot-mcp             # stdio で MCP を serve (MCP クライアント�
 | `--channel <stable\|beta\|dev\|canary>` | 起動する Chrome チャンネル (既定 stable) |
 | `--executable-path <path>` | Chrome バイナリの明示指定 (`--channel` より優先) |
 | `--attach <ws://…\|port\|host:port>` | 起動せず既存の debugging endpoint にアタッチ (loopback のみ) |
-| `--workspace-root <dir>` | スクリーンショット等の既定の出力先 (既定: 一時ディレクトリ。呼び出しの `workspaceRoot` が優先) |
 | `--viewport <WxH>` | 初期ビューポート。例 `1280x800` |
 | `--profile <name>` | 名前付き永続プロファイル (回をまたいで保持) |
 | `--user-data-dir <path>` | user-data-dir の明示指定 (`--profile` と排他) |

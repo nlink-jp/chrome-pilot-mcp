@@ -1,6 +1,6 @@
 # ADR-0004: ファイルを生成するツールの呼び出し単位 workspace root
 
-- Status: Accepted
+- Status: Accepted — 同日 [ADR-0005](0005-work-dir-contract.ja.md) が置換（引数は `work_dir`、必須、既定も起動フラグも無し）
 - Date: 2026-09-13
 - Driver: magi
 - Depends on: ADR-0002 (config.toml スキーマ)

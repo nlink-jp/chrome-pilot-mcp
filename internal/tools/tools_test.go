@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -469,9 +470,12 @@ func TestTakeScreenshot(t *testing.T) {
 		return map[string]any{"data": base64.StdEncoding.EncodeToString(imgBytes)}, ""
 	}
 	ws := t.TempDir()
-	m := newTestManager(t, Config{WorkspaceRoot: ws}, f)
+	if resolved, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = resolved
+	}
+	m := newTestManager(t, Config{}, f)
 
-	out, err := callTool(t, m.takeScreenshot, `{}`)
+	out, err := callTool(t, m.takeScreenshot, `{"work_dir":`+quote(ws)+`}`)
 	if err != nil {
 		t.Fatalf("take_screenshot: %v", err)
 	}
@@ -501,9 +505,9 @@ func TestTakeScreenshot(t *testing.T) {
 
 func TestTakeScreenshotBadFormat(t *testing.T) {
 	f := newFakeChrome(t, "about:blank")
-	m := newTestManager(t, Config{WorkspaceRoot: t.TempDir()}, f)
+	m := newTestManager(t, Config{}, f)
 
-	_, err := callTool(t, m.takeScreenshot, `{"format":"webp"}`)
+	_, err := callTool(t, m.takeScreenshot, `{"work_dir":`+quote(resolvedTempDir(t))+`,"format":"webp"}`)
 	var te *toolerr.Error
 	if !errors.As(err, &te) || te.Code != toolerr.CodeInvalidArguments {
 		t.Fatalf("want invalid_arguments, got %v", err)

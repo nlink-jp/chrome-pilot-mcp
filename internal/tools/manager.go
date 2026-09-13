@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/browser"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/cdp"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/workdir"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/ws"
 )
 
@@ -30,7 +30,6 @@ type Config struct {
 	Channel        string
 	ExecutablePath string
 	Attach         string // non-empty → attach instead of launch
-	WorkspaceRoot  string
 	ViewportWidth  int
 	ViewportHeight int
 
@@ -85,10 +84,6 @@ type Manager struct {
 	// col holds passive event-collector state (console, network, dialogs,
 	// screencast frames).
 	col collectors
-
-	wsOnce       sync.Once
-	workspaceDir string
-	wsErr        error
 }
 
 // uidTarget locates the DOM node behind a snapshot uid. Accessibility-tree
@@ -383,52 +378,18 @@ func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
 	return p, nil
 }
 
-// ---- workspace ----
+// ---- output ----
 
-// workspace returns the output directory, creating it lazily.
-func (m *Manager) workspace() (string, error) {
-	m.wsOnce.Do(func() {
-		dir := m.cfg.WorkspaceRoot
-		if dir == "" {
-			d, err := os.MkdirTemp("", "chrome-pilot-mcp-ws-*")
-			if err != nil {
-				m.wsErr = fmt.Errorf("create workspace: %w", err)
-				return
-			}
-			dir = d
-		} else if err := os.MkdirAll(dir, 0o755); err != nil {
-			m.wsErr = fmt.Errorf("create workspace: %w", err)
-			return
-		}
-		m.workspaceDir = dir
-	})
-	return m.workspaceDir, m.wsErr
-}
-
-func (m *Manager) workspaceFile(subdir, name string) (string, error) {
-	root, err := m.workspace()
-	if err != nil {
-		return "", err
-	}
-	return fileUnder(root, subdir, name)
-}
-
-// workspaceFileIn places a file under a root the CALLER supplied, falling
-// back to the server's own workspace when root is empty.
+// fileIn places a file under the directory the CALLER supplied.
 //
-// It exists because the server's workspace is chosen at startup, and the
-// agent driving the tools is usually the one that has to open the result
-// afterwards. An agent whose file access is confined to a project and a
-// session directory (gem-agent, lagent and Claude Code all are) cannot read
-// a screenshot written to a temp directory it was never told about: the
-// returned path is then a path to nothing. Letting the call name the root
-// puts the choice where the constraint is. See ADR-0004.
-//
-// root must be validated with cleanWorkspaceRoot before it gets here.
-func (m *Manager) workspaceFileIn(root, subdir, name string) (string, error) {
-	if root == "" {
-		return m.workspaceFile(subdir, name)
-	}
+// The server has no workspace of its own any more. It used to pick one at
+// startup — a flag, a config key, else a temp directory — and hand back paths
+// into it, which the agent driving the tools usually could not open: the
+// runtimes this server is registered with confine their file access to a
+// project and a session directory. The information needed to choose lives with
+// the caller, so the caller names it on every call (ADR-0005; organization
+// ADR-021).
+func (m *Manager) fileIn(root, subdir, name string) (string, error) {
 	return fileUnder(root, subdir, name)
 }
 
@@ -440,20 +401,13 @@ func fileUnder(root, subdir, name string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
-// cleanWorkspaceRoot validates a caller-supplied workspace root. It must be
-// absolute: a tool argument is JSON, so no shell expands "~" or resolves a
-// relative path on the way in, and accepting either would place the file
+// resolveWorkDir resolves and validates the caller's work directory for one
+// call: the work_dir argument, else the runtime hint in the request's _meta,
+// else an error. It must be
 // somewhere neither side named — the server's working directory. An empty
 // root is the documented "use the server default" case, not an error.
-func cleanWorkspaceRoot(root string) (string, error) {
-	if root == "" {
-		return "", nil
-	}
-	if !filepath.IsAbs(root) {
-		return "", toolerr.Newf(toolerr.CodeInvalidArguments,
-			"workspaceRoot must be an absolute path (no ~ or relative paths — nothing expands them here): %q", root)
-	}
-	return filepath.Clean(root), nil
+func resolveWorkDir(ctx context.Context, arg string) (string, error) {
+	return workdir.Resolver{}.Resolve(ctx, arg)
 }
 
 // ---- error mapping ----
