@@ -102,7 +102,8 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 		InputSchema: schema(`{"type":"object","properties":{
 			"format":{"type":"string","enum":["png","jpeg"],"description":"Image format. Default png."},
 			"quality":{"type":"integer","description":"JPEG quality 0-100 (jpeg only)."},
-			"fullPage":{"type":"boolean","description":"Capture the full scrollable page instead of the viewport."}
+			"fullPage":{"type":"boolean","description":"Capture the full scrollable page instead of the viewport."},
+			` + workspaceRootProp + `
 		}}`),
 	}, wrap(m.takeScreenshot))
 
@@ -111,6 +112,12 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 }
 
 const includeSnapshotProp = `"includeSnapshot":{"type":"boolean","description":"Whether to include a fresh snapshot in the response. Default is false."}`
+
+// workspaceRootProp is the per-call output root shared by the tools that
+// write a file (ADR-0004). The wording tells the caller why it would pass
+// one: the server's own workspace is chosen at startup, and an agent whose
+// file access is confined elsewhere cannot open what lands there.
+const workspaceRootProp = `"workspaceRoot":{"type":"string","description":"Absolute path to a directory you can read back; the file is written under it instead of the server's workspace. Pass your own session or working directory when you have one — the result comes back as a path, and a path you cannot open is worth nothing. Created if missing; no ~ expansion."}`
 
 func registerInputTools(s *mcpserver.Server, m *Manager) {
 	s.RegisterTool(mcpserver.Tool{
@@ -280,6 +287,7 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop). A viewport change mid-recording is fine: frames are refitted rather than dropped.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"filePath":{"type":"string","description":"Output .gif path. Defaults to the workspace."},
+			` + workspaceRootProp + `,
 			"maxWidth":{"type":"integer","description":"Max frame width in px. Default 800."},
 			"everyNthFrame":{"type":"integer","description":"Capture every Nth frame. Default 2."},
 			"quality":{"type":"integer","description":"JPEG capture quality 0-100. Default 70."},

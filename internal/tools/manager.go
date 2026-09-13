@@ -410,11 +410,50 @@ func (m *Manager) workspaceFile(subdir, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return fileUnder(root, subdir, name)
+}
+
+// workspaceFileIn places a file under a root the CALLER supplied, falling
+// back to the server's own workspace when root is empty.
+//
+// It exists because the server's workspace is chosen at startup, and the
+// agent driving the tools is usually the one that has to open the result
+// afterwards. An agent whose file access is confined to a project and a
+// session directory (gem-agent, lagent and Claude Code all are) cannot read
+// a screenshot written to a temp directory it was never told about: the
+// returned path is then a path to nothing. Letting the call name the root
+// puts the choice where the constraint is. See ADR-0004.
+//
+// root must be validated with cleanWorkspaceRoot before it gets here.
+func (m *Manager) workspaceFileIn(root, subdir, name string) (string, error) {
+	if root == "" {
+		return m.workspaceFile(subdir, name)
+	}
+	return fileUnder(root, subdir, name)
+}
+
+func fileUnder(root, subdir, name string) (string, error) {
 	dir := filepath.Join(root, subdir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, name), nil
+}
+
+// cleanWorkspaceRoot validates a caller-supplied workspace root. It must be
+// absolute: a tool argument is JSON, so no shell expands "~" or resolves a
+// relative path on the way in, and accepting either would place the file
+// somewhere neither side named — the server's working directory. An empty
+// root is the documented "use the server default" case, not an error.
+func cleanWorkspaceRoot(root string) (string, error) {
+	if root == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(root) {
+		return "", toolerr.Newf(toolerr.CodeInvalidArguments,
+			"workspaceRoot must be an absolute path (no ~ or relative paths — nothing expands them here): %q", root)
+	}
+	return filepath.Clean(root), nil
 }
 
 // ---- error mapping ----

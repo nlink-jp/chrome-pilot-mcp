@@ -71,6 +71,13 @@ Notable behaviors:
 - `take_screenshot` saves to the workspace and returns the image inline
   when small enough; `screencast_stop` writes an animated GIF assembled
   entirely with the Go standard library.
+- `take_screenshot` and `screencast_start` take an optional absolute
+  `workspaceRoot`, and write under that directory instead of the server's
+  workspace. Pass it when the caller can only read certain paths — an agent
+  confined to a project and a session directory cannot open a file left in
+  the server's temp directory, and the returned path is then worth nothing.
+  The directory is created if missing; `--workspace-root` remains the
+  default for calls that omit it.
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
   simulated.
 - Console and network capture starts when a page is first touched by a
@@ -125,7 +132,7 @@ Flags:
 | `--channel <stable\|beta\|dev\|canary>` | Chrome channel to launch (default stable) |
 | `--executable-path <path>` | Explicit Chrome binary (overrides `--channel`) |
 | `--attach <ws://…\|port\|host:port>` | Attach to an existing debugging endpoint (loopback only) instead of launching |
-| `--workspace-root <dir>` | Output directory for screenshots etc. (default: fresh temp dir) |
+| `--workspace-root <dir>` | Default output directory for screenshots etc. (default: fresh temp dir; a call's `workspaceRoot` overrides it) |
 | `--viewport <WxH>` | Initial viewport, e.g. `1280x800` |
 | `--profile <name>` | Named persistent profile, kept across runs |
 | `--user-data-dir <path>` | Explicit user-data-dir (exclusive with `--profile`) |

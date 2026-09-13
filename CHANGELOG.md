@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`take_screenshot` and `screencast_start` accept an optional absolute
+  `workspaceRoot`** and write under it instead of the server's own workspace
+  (ADR-0004). The workspace root was chosen once at startup, while the agent
+  that has to open the result is confined to its own directories — gem-agent,
+  lagent and Claude Code all refuse a path outside the project and the
+  session directory, so a screenshot written to the server's temp directory
+  came back as a path the caller could not read. The directory is created if
+  missing, a relative path or `~` is refused (nothing expands them inside a
+  JSON argument), an explicit `filePath` on `screencast_start` still wins,
+  and calls that omit it behave exactly as before.
+
 ## [0.3.1] - 2026-07-30
 
 ### Fixed

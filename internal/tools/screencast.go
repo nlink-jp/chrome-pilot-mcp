@@ -86,6 +86,7 @@ func (m *Manager) handleScreencastFrame(sessionID string, params json.RawMessage
 func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args struct {
 		FilePath      string `json:"filePath"`
+		WorkspaceRoot string `json:"workspaceRoot"`
 		MaxWidth      int    `json:"maxWidth"`
 		EveryNthFrame int    `json:"everyNthFrame"`
 		Quality       int    `json:"quality"`
@@ -98,6 +99,13 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 	if args.FilePath != "" && !strings.HasSuffix(args.FilePath, ".gif") {
 		return nil, toolerr.Newf(toolerr.CodeInvalidArguments,
 			"filePath must end in .gif (this implementation records animated GIF, not webm/mp4): %q", args.FilePath)
+	}
+	// Validated here rather than at stop: the call that supplies a bad
+	// argument is the one that must be told, and a recording that only
+	// fails when it ends has already thrown away its frames.
+	wsRoot, err := cleanWorkspaceRoot(args.WorkspaceRoot)
+	if err != nil {
+		return nil, err
 	}
 	p, err := m.selectedPage(ctx)
 	if err != nil {
@@ -117,6 +125,7 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 		active:        true,
 		collecting:    true,
 		filePath:      args.FilePath,
+		workspaceRoot: wsRoot,
 		maxFrames:     maxFrames,
 		maxBytes:      defaultScreencastMaxBytes,
 		maxDurationMS: args.MaxDurationMS,
@@ -199,6 +208,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	dropped := sc.dropped
 	limitHit := sc.limitHit
 	filePath := sc.filePath
+	wsRoot := sc.workspaceRoot
 	delete(m.col.screencasts, p.sessionID)
 	m.col.mu.Unlock()
 
@@ -223,7 +233,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 
 	if filePath == "" {
 		name := fmt.Sprintf("cast-%s.gif", time.Now().Format("20060102-150405"))
-		filePath, err = m.workspaceFile("screencasts", name)
+		filePath, err = m.workspaceFileIn(wsRoot, "screencasts", name)
 		if err != nil {
 			return nil, toolerr.New(toolerr.CodeWorkspaceFailed, err.Error())
 		}
