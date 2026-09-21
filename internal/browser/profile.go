@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/config"
 )
 
 // Profile selection (ADR-0003). Three modes:
@@ -22,13 +24,15 @@ import (
 
 var profileNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
-// ProfilesDir returns the managed directory holding named profiles.
+// ProfilesDir returns the managed directory holding named profiles. It sits
+// inside config.Dir, the one expression for this server's own tree, so the
+// work-directory denial that refuses that tree covers the profiles too.
 func ProfilesDir() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := config.Dir()
 	if err != nil {
 		return "", fmt.Errorf("browser: locate user config dir: %w", err)
 	}
-	return filepath.Join(dir, "chrome-pilot-mcp", "profiles"), nil
+	return filepath.Join(dir, "profiles"), nil
 }
 
 // resolveProfile turns the profile options into a concrete user-data-dir.

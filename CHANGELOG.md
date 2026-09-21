@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+- **`work_dir` may no longer be this server's own directory.** Organization
+  ADR-021 §4 closes the work-directory checks with "not a system location …
+  and not the server's own config or state directory" → `work_dir_denied`,
+  and the resolver has carried a `Denied` list for exactly that — but nothing
+  populated it, so it ran as its zero value. That tree is both the config and
+  the state directory here: it holds `config.toml`, which can name an
+  executable to launch and widen the host limits, and `profiles/`, the
+  managed browser profiles with their cookies and logged-in sessions. A
+  caller could name it as its `work_dir` and have the server write
+  screenshots, PDFs and GIFs into a live browser profile or over that config,
+  on a model's say-so. `config.Dir()` —
+  `~/Library/Application Support/chrome-pilot-mcp` on macOS,
+  `~/.config/chrome-pilot-mcp` on Linux — and everything under it is now
+  refused.
+- `config.Dir()` is a new single expression for that tree; `config.DefaultPath`
+  and `browser.ProfilesDir` both derive from it, so the denial cannot drift
+  away from the location it protects.
+- `resolveWorkDir`'s doc comment no longer describes a server default that
+  ADR-021 removed.
+
 ## [0.5.2] - 2026-09-14
 
 ### Added

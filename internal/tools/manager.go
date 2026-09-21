@@ -18,6 +18,7 @@ import (
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/browser"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/cdp"
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/config"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/workdir"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/ws"
@@ -403,11 +404,48 @@ func fileUnder(root, subdir, name string) (string, error) {
 
 // resolveWorkDir resolves and validates the caller's work directory for one
 // call: the work_dir argument, else the runtime hint in the request's _meta,
-// else an error. It must be
-// somewhere neither side named — the server's working directory. An empty
-// root is the documented "use the server default" case, not an error.
+// else an error (organization ADR-021 §2). There is no server-owned default —
+// a destination this server picked is one the caller can read back only by
+// coincidence.
+//
+// Every tool that writes a file goes through here, and this is the only place
+// the resolver is built, so a tool added later cannot arrive without the
+// denied list.
 func resolveWorkDir(ctx context.Context, arg string) (string, error) {
-	return workdir.Resolver{}.Resolve(ctx, arg)
+	return workDirResolver().Resolve(ctx, arg)
+}
+
+// workDirResolver builds the resolver, denying this server's own directory.
+//
+// A work directory is the caller's, not ours (organization ADR-021 §4: "not a
+// system location … and not the server's own config or state directory" →
+// `work_dir_denied`). This one matters more than most: config.Dir holds both
+// config.toml — which can name an executable to launch and widen the ADR-0001
+// host limits — and profiles/, the managed browser profiles, which accumulate
+// cookies and logged-in sessions. Without the denial a caller could name that
+// tree as its work_dir and have the server drop screenshots and PDFs into a
+// live browser profile, or over the config that governs what it may do at
+// all, on a model's say-so.
+func workDirResolver() workdir.Resolver {
+	return workdir.Resolver{Denied: serverOwnedDirs()}
+}
+
+// serverOwnedDirs lists this server's own config and state directories.
+//
+// There is one tree and it is both: `config.Dir()`. Everything else this
+// server produces goes under the caller's `work_dir`, and an ephemeral
+// profile lives in a temp directory that is removed on Close.
+//
+// An operator who points --config at a file somewhere else is not covered:
+// that directory is the operator's choice, not this server's own, and
+// refusing an arbitrary directory — a project tree, or the process's working
+// directory — would deny work directories callers legitimately use.
+func serverOwnedDirs() []string {
+	dir, err := config.Dir()
+	if err != nil || dir == "" {
+		return nil
+	}
+	return []string{dir}
 }
 
 // ---- error mapping ----

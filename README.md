@@ -75,7 +75,12 @@ Notable behaviors:
   writes under it. There is no default: an agent confined to a project and a
   session directory cannot open a file left in the server's temp directory,
   and a path it cannot open is not a result. The directory must already
-  exist, and nothing here expands `~` or resolves a relative path.
+  exist, and nothing here expands `~` or resolves a relative path. A
+  `work_dir` naming a system location, your home directory itself, a
+  credential or agent-control location, or **this server's own directory**
+  (`config.toml` and the managed browser profiles: `~/Library/Application
+  Support/chrome-pilot-mcp` on macOS, `~/.config/chrome-pilot-mcp` on Linux)
+  is refused with `work_dir_denied`, subdirectories included.
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
   simulated.
 - Console and network capture starts when a page is first touched by a

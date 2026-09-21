@@ -115,3 +115,13 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 - Never trust an event as the sole completion signal. Navigation falls back
   to `document.readyState` because a missed load event was reported as a
   failed navigation for a page that had loaded.
+- The work-directory resolver is constructed in exactly one place:
+  `workDirResolver()` in `internal/tools/manager.go`, reached only through
+  `resolveWorkDir`, which every file-producing tool calls. Its `Denied` list
+  carries `config.Dir()` (organization ADR-021 §4) — the one expression for
+  this server's own tree, which holds both `config.toml` and
+  `browser.ProfilesDir()`'s managed browser profiles, so the denial covers
+  the cookies and logged-in sessions those profiles accumulate. Do not write
+  `workdir.Resolver{}`: an empty `Denied` is a resolver that lets a caller
+  drop screenshots into a live browser profile, or over the config that
+  governs what the server may launch.

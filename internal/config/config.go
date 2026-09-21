@@ -34,17 +34,34 @@ func Default() Config {
 	return Config{Channel: "stable"}
 }
 
+// Dir is this server's own directory under the user config directory. It
+// holds config.toml and, beside it, the managed browser profiles
+// (browser.ProfilesDir) — so it is both the config and the state directory
+// this server owns, and it is what the work-directory contract refuses as a
+// caller's `work_dir` (organization ADR-021 §4).
+//
+// It is one expression on purpose: three callers need the same tree, and a
+// path spelled three times is a denial that drifts away from the location it
+// was meant to protect.
+func Dir() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "chrome-pilot-mcp"), nil
+}
+
 // DefaultPath is the only location searched when --config is not given.
 // The current directory is deliberately NOT searched: a config can name
 // an executable to run and can widen the ADR-0001 host limits, so
 // picking one up from whatever directory the server happens to start in
 // would be a config-injection channel (ADR-0002).
 func DefaultPath() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "chrome-pilot-mcp", "config.toml"), nil
+	return filepath.Join(dir, "config.toml"), nil
 }
 
 // Load reads and validates a config file into cfg (starting from the
