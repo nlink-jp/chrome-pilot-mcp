@@ -101,13 +101,15 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   holds it to stop. A new tool taking a file path goes through these — a path
   argument checked only for a suffix or for existence is how both gaps got
   in, with tests pinning them. Refusals are `path_not_allowed` with
-  `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir`).
+  `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir` /
+  `browser_profile`).
   Compare places by identity (`insideByIdentity`, `os.SameFile`), never by
   name: this disk is case-insensitive, and two reviews in a row got past a
   name comparison. Temporary files get a random fixed-length name and
   `O_EXCL` (`createExclusive`). The protected directories are one list,
   `Manager.protectedDirs` (server dir, the driven Chrome's profile kept in
-  `profileDir` at connect, the user's own Chrome roots); tools call
+  `profileDir` at connect, every `chrome-pilot-mcp-profile-*` in the temp
+  directory, the user's own Chrome roots); tools call
   `Manager.workDir`, not `resolveWorkDir`, so a `work_dir` inside one is denied
   by identity too.
   `workdir.Sensitive` resolves symlinks itself, so passing it the given path

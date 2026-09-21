@@ -79,8 +79,10 @@ Notable behaviors:
   `work_dir` naming a system location, your home directory itself, a
   credential or agent-control location, or **this server's own directory**
   (`config.toml` and the managed browser profiles: `~/Library/Application
-  Support/chrome-pilot-mcp` on macOS, `~/.config/chrome-pilot-mcp` on Linux)
-  is refused with `work_dir_denied`, subdirectories included.
+  Support/chrome-pilot-mcp` on macOS, `~/.config/chrome-pilot-mcp` on Linux,
+  `%AppData%\chrome-pilot-mcp` on Windows), a browser profile this server or
+  another instance of it is using, or your own Chrome profile is refused with
+  `work_dir_denied`, subdirectories included and whatever the spelling.
 - Nothing is written outside `work_dir`: a `filePath` given to
   `screencast_start` is relative to it, or absolute inside it, and anything
   else is refused with `path_not_allowed` before recording starts.
@@ -182,7 +184,8 @@ allow_hosts = ["example.com", "*.example.com"]
 By default each run gets a throwaway profile that is deleted on shutdown.
 `--profile <name>` keeps one under `profiles/<name>` in this server's own
 directory (`~/Library/Application Support/chrome-pilot-mcp` on macOS,
-`~/.config/chrome-pilot-mcp` on Linux; mode 0700) so logins survive
+`~/.config/chrome-pilot-mcp` on Linux, `%AppData%\chrome-pilot-mcp` on Windows;
+mode 0700) so logins survive
 across runs; `--user-data-dir <path>` uses a directory you name. Both are
 refused together with `--attach`, and pointing `--user-data-dir` at your
 real Chrome profile is refused outright — use `--attach` to drive a

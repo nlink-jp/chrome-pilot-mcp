@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/workdir"
@@ -47,9 +48,9 @@ func outputUnder(wsRoot, filePath string, protected []protectedDir) (string, err
 	if !filepath.IsAbs(raw) {
 		raw = filepath.Join(wsRoot, raw)
 	}
-	real := resolveExisting(raw)
+	real, ok := resolveExisting(raw)
 	rel, err := filepath.Rel(wsRoot, real)
-	if err != nil || rel == "." || !filepath.IsLocal(rel) {
+	if !ok || err != nil || rel == "." || !filepath.IsLocal(rel) {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed,
 			"filePath %q is outside work_dir %q: files are written only under the work directory the call names — "+
 				"pass a path relative to it, or leave filePath out", filePath, wsRoot).
@@ -173,7 +174,11 @@ func writeUnder(root *os.Root, rel string, protected []protectedDir, write func(
 	}
 	// Before anything is created: where the directory would be, links and all,
 	// so not even an empty directory appears in a protected place.
-	if reason, why := refusedLocation(protected, resolveExisting(filepath.Join(root.Name(), dir))); reason != "" {
+	where, ok := resolveExisting(filepath.Join(root.Name(), dir))
+	if !ok {
+		return refuse("outside_work_dir", "a symbolic link on the output path cannot be followed safely")
+	}
+	if reason, why := refusedLocation(protected, where); reason != "" {
 		return refuse(reason, why)
 	}
 	if dir != "." {
@@ -255,33 +260,52 @@ func firstErr(errs ...error) error {
 // resolveExisting returns the real location a file created at p would have:
 // the symlinks of every existing component resolved — a dangling one by its
 // target, since creating through it would create the target — and the rest
-// appended unchanged. p must be absolute and clean. A chain of links that
-// does not end is returned as it stands; the write's os.Root refuses it.
-func resolveExisting(p string) string {
+// appended unchanged. p must be absolute and clean.
+//
+// ok is false when the answer cannot be trusted, and the caller refuses: a
+// dangling link whose target climbs with "..", because joining it cancels a
+// component by its name before that component's own link is resolved (the
+// last review walked a pre-check into a protected directory that way), a
+// link that cannot be read, or a chain of links that does not end.
+func resolveExisting(p string) (real string, ok bool) {
 	for hops := 0; hops < 40; hops++ {
 		cur, tail := p, ""
 		for {
 			if r, err := filepath.EvalSymlinks(cur); err == nil {
-				return filepath.Join(r, tail)
+				return filepath.Join(r, tail), true
 			}
 			if fi, err := os.Lstat(cur); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 				target, err := os.Readlink(cur)
-				if err != nil {
-					return p
+				if err != nil || hasParentSegment(target) {
+					return "", false
 				}
 				if !filepath.IsAbs(target) {
-					target = filepath.Join(filepath.Dir(cur), target)
+					parent, err := filepath.EvalSymlinks(filepath.Dir(cur))
+					if err != nil {
+						return "", false
+					}
+					target = filepath.Join(parent, target)
 				}
 				p = filepath.Join(filepath.Clean(target), tail)
 				break // resolve again from the link's target
 			}
 			parent := filepath.Dir(cur)
 			if parent == cur {
-				return p
+				return p, true
 			}
 			tail = filepath.Join(filepath.Base(cur), tail)
 			cur = parent
 		}
 	}
-	return p
+	return "", false
+}
+
+// hasParentSegment reports whether a path has a ".." component.
+func hasParentSegment(p string) bool {
+	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }

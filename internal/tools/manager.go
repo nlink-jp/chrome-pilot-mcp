@@ -11,6 +11,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -441,6 +443,14 @@ func (m *Manager) protectedDirs() []protectedDir {
 	m.mu.Unlock()
 	if d := profile; d != "" {
 		out = append(out, protectedDir{d, "server_dir", "it is inside the profile of the browser this server is driving, " + d})
+	}
+	// Every throwaway profile in the temp directory, not only this process's:
+	// each runtime runs its own server, and a killed one leaves its profile
+	// behind, still holding cookies.
+	if others, err := filepath.Glob(filepath.Join(os.TempDir(), "chrome-pilot-mcp-profile-*")); err == nil {
+		for _, d := range others {
+			out = append(out, protectedDir{d, "server_dir", "it is inside the throwaway profile of a chrome-pilot-mcp browser, " + d})
+		}
 	}
 	for _, d := range browser.RealChromeProfileRoots() {
 		out = append(out, protectedDir{d, "browser_profile", "it is inside your own Chrome profile, " + d})

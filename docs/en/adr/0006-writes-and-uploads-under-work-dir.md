@@ -51,10 +51,11 @@ superseded it the same day.
    an outside one.
 3. **Inside `work_dir`, some places stay refused in both directions**: the
    credential blacklist (`sensitive_path`), and the protected directories —
-   this server's own directory (`config.toml` and the managed profiles) and the
-   profile of the Chrome it is driving (`server_dir`), which for a throwaway
-   profile lives under the temp directory, and the user's own Chrome profiles
-   (`browser_profile`). A `work_dir` may legitimately be a parent of any of
+   this server's own directory (`config.toml` and the managed profiles), the
+   profile of the Chrome it is driving, and every throwaway
+   `chrome-pilot-mcp-profile-*` in the temp directory — each runtime runs its
+   own server, and a killed one leaves its profile behind (`server_dir`) — and
+   the user's own Chrome profiles (`browser_profile`). A `work_dir` may legitimately be a parent of any of
    them — the temp directory, `~/.config`, `~/Library/Application Support` —
    and the files under it would then be a live profile's cookies. A `work_dir`
    inside one is refused with `work_dir_denied`. The protected directories are
@@ -71,10 +72,12 @@ superseded it the same day.
    nobody can guess, of fixed length, created exclusively and renamed into
    place, so an existing entry (a hard link to a file outside `work_dir` among
    them) is replaced rather than written through, and nothing planted at a
-   predictable temporary name is written through either.
+   predictable temporary name is written through either. A dangling link whose
+   target climbs with `..` is refused rather than followed: joining it would
+   cancel a component by name before that component's own link is resolved.
 5. **A refusal is `path_not_allowed`**, and `details.reason` says which rule:
-   `outside_work_dir`, `sensitive_path` or `server_dir`. A missing file or a
-   directory stays `invalid_arguments`.
+   `outside_work_dir`, `sensitive_path`, `server_dir` or `browser_profile`. A
+   missing file or a directory stays `invalid_arguments`.
 6. `go.mod` moves to Go 1.25 for `os.Root.MkdirAll`. The standard library is
    still the only dependency.
 

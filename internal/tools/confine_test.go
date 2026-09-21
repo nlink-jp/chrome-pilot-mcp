@@ -429,3 +429,32 @@ func TestALongFileNameStillFits(t *testing.T) {
 		t.Errorf("path = %q", path)
 	}
 }
+
+// Another server's throwaway profile in the same temp directory is protected
+// too: each runtime runs its own chrome-pilot-mcp, and a killed one leaves
+// its profile, cookies and all (the last review uploaded a sibling's).
+func TestAnotherInstancesThrowawayProfileIsProtected(t *testing.T) {
+	temp := resolvedTempDir(t)
+	t.Setenv("TMPDIR", temp)
+	mustWrite(t, filepath.Join(temp, "chrome-pilot-mcp-profile-999", "Default", "Cookies"), "session")
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	snapshotFirst(t, m)
+	_, err := callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"chrome-pilot-mcp-profile-999/Default/Cookies","work_dir":`+quote(temp)+`}`)
+	wantPathRefused(t, err, "server_dir")
+}
+
+// A dangling link whose target climbs with ".." cannot be followed safely —
+// joining it cancels a component by name before that component's own link is
+// resolved — so it is refused rather than guessed at.
+func TestADanglingLinkThatClimbsIsRefused(t *testing.T) {
+	work := resolvedTempDir(t)
+	// Written as a string: filepath.Join would clean the ".." away.
+	if err := os.Symlink("somewhere/../not-there", filepath.Join(work, "out")); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	_, err := callTool(t, m.screencastStart, `{"filePath":"out/x.gif","work_dir":`+quote(work)+`}`)
+	wantPathRefused(t, err, "outside_work_dir")
+}

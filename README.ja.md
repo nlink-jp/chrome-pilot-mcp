@@ -80,8 +80,10 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   ディレクトリそのもの、資格情報・エージェント制御ファイルの位置、および
   **このサーバー自身のディレクトリ**(`config.toml` と管理下のブラウザ
   プロファイルが入る場所。macOS では `~/Library/Application Support/chrome-pilot-mcp`、
-  Linux では `~/.config/chrome-pilot-mcp`)を指定した呼び出しは、
-  サブディレクトリを含めて `work_dir_denied` で拒否します。
+  Linux では `~/.config/chrome-pilot-mcp`、Windows では `%AppData%\chrome-pilot-mcp`)、
+  このサーバーやほかのインスタンスが使っているブラウザプロファイル、あなた自身の Chrome の
+  プロファイルを指定した呼び出しは、サブディレクトリを含め、綴りにかかわらず
+  `work_dir_denied` で拒否します。
 - `work_dir` の外には何も書きません。`screencast_start` に渡す `filePath` は
   `work_dir` からの相対パスか、その中を指す絶対パスで、それ以外は録画を始める前に
   `path_not_allowed` で拒否します。
@@ -181,8 +183,8 @@ allow_hosts = ["example.com", "*.example.com"]
 
 既定では毎回使い捨てプロファイルを作り、終了時に削除します。
 `--profile <name>` はこのサーバー自身のディレクトリ(macOS では
-`~/Library/Application Support/chrome-pilot-mcp`、Linux では `~/.config/chrome-pilot-mcp`)の
-`profiles/<name>`(パーミッション 0700) に永続化し、ログイン状態を回にまたいで保持します。
+`~/Library/Application Support/chrome-pilot-mcp`、Linux では `~/.config/chrome-pilot-mcp`、
+Windows では `%AppData%\chrome-pilot-mcp`)の `profiles/<name>`(パーミッション 0700) に永続化し、ログイン状態を回にまたいで保持します。
 `--user-data-dir <path>` は指定ディレクトリをそのまま使います。どちらも
 `--attach` との併用は拒否され、`--user-data-dir` に**実 Chrome の
 プロファイルを指定した場合も拒否**します (開いているブラウザを操作したい
