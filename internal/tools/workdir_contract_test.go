@@ -25,7 +25,13 @@ func registeredTools(t *testing.T) []mcpserver.Tool {
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	f := newFakeChrome(t, "about:blank")
 	RegisterAll(srv, newTestManager(t, Config{}, f))
-	return srv.Tools()
+	tools := srv.Tools()
+	// The floor under every per-tool loop: with no tools registered, each
+	// contract would pass without having examined anything.
+	if len(tools) == 0 {
+		t.Fatal("no tools are registered, so every per-tool contract would pass without examining one")
+	}
+	return tools
 }
 
 func TestNoToolSchemaOrDescriptionCarriesARetiredWorkDirName(t *testing.T) {
