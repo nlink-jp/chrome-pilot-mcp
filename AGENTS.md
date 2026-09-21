@@ -8,7 +8,7 @@ speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
 d'être: eliminate npm supply-chain risk — single static binary, `go.mod`
 with no `require`, nothing downloaded at runtime.
 
-**Current stage: released (v0.3.0), 27/27 tools.** All tools verified E2E
+**Current stage: released (the version is in `git tag` and the CHANGELOG), 27/27 tools.** All tools verified E2E
 against real headless Chrome, plus config.toml, profile persistence, and
 host-filter enforcement. v0.2.0 came out of using v0.1.0 as an MCP client,
 v0.3.0 out of an external test report — see the CHANGELOG. Both rounds
@@ -17,7 +17,8 @@ thing as a client before calling a release good**.
 
 Design background: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`) and
 the ADRs — 0001 host allow/block lists, 0002 config.toml, 0003 browser
-profiles, 0004 per-call workspace root (all Accepted).
+profiles, 0004 per-call workspace root (superseded the same day by 0005), 0005 the
+work_dir contract.
 
 ## Build & test
 
