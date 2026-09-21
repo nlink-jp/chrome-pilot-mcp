@@ -119,6 +119,10 @@ const includeSnapshotProp = `"includeSnapshot":{"type":"boolean","description":"
 // file access is confined elsewhere cannot open what lands there.
 const workDirProp = `"work_dir":{"type":"string","description":"Absolute path to a directory you can read back \u2014 your session or working directory. The file is written under it and comes back as a path, so a directory you cannot open leaves you holding a path to nothing. It must already exist; nothing here expands ~ or resolves a relative path."}`
 
+// uploadWorkDirProp is work_dir for upload_file, which reads a file rather
+// than writing one (organization ADR-021 §7, project ADR-0006).
+const uploadWorkDirProp = `"work_dir":{"type":"string","description":"Absolute path to your session or working directory. The file to upload must be under it: what a page is given it can send anywhere, so only a file you placed in your own directory is handed over. It must already exist; nothing here expands ~ or resolves a relative path."}`
+
 func registerInputTools(s *mcpserver.Server, m *Manager) {
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "click",
@@ -201,12 +205,13 @@ func registerInputTools(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "upload_file",
-		Description: "Sets a local file on a file input element.",
+		Description: "Sets a local file on a file input element. Only a file under work_dir is handed over: the page can send it anywhere.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"uid":{"type":"string","description":"The uid of the file input element from the page content snapshot."},
-			"filePath":{"type":"string","description":"The local path of the file to upload."},
+			"filePath":{"type":"string","description":"The file to upload: a path relative to work_dir, or an absolute path under it. Credential and agent-control locations are refused."},
+			` + uploadWorkDirProp + `,
 			` + includeSnapshotProp + `
-		},"required":["uid","filePath"]}`),
+		},"required":["uid","filePath","work_dir"]}`),
 	}, wrap(m.uploadFile))
 
 	s.RegisterTool(mcpserver.Tool{
@@ -286,7 +291,7 @@ func registerObservabilityTools(s *mcpserver.Server, m *Manager) {
 		Name:        "screencast_start",
 		Description: "Starts recording the selected page as an animated GIF (frames are captured until screencast_stop). A viewport change mid-recording is fine: frames are refitted rather than dropped.",
 		InputSchema: schema(`{"type":"object","properties":{
-			"filePath":{"type":"string","description":"Output .gif path. Defaults to a name under work_dir."},
+			"filePath":{"type":"string","description":"Output .gif path under work_dir: relative to it, or absolute inside it. Defaults to screencasts/cast-<time>.gif under work_dir."},
 			` + workDirProp + `,
 			"maxWidth":{"type":"integer","description":"Max frame width in px. Default 800."},
 			"everyNthFrame":{"type":"integer","description":"Capture every Nth frame. Default 2."},

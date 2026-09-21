@@ -82,6 +82,14 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   プロファイルが入る場所。macOS では `~/Library/Application Support/chrome-pilot-mcp`、
   Linux では `~/.config/chrome-pilot-mcp`)を指定した呼び出しは、
   サブディレクトリを含めて `work_dir_denied` で拒否します。
+- `work_dir` の外には何も書きません。`screencast_start` に渡す `filePath` は
+  `work_dir` からの相対パスか、その中を指す絶対パスで、それ以外は録画を始める前に
+  `path_not_allowed` で拒否します。
+- `upload_file` も `work_dir` を取り、その中のファイルだけをページに渡します
+  (`work_dir` からの相対パスか、その中を指す絶対パス)。ページは渡されたものを
+  どこへでも送れるため、先にファイルを作業ディレクトリへコピーしてください。外を
+  指すパス、外へ向かうシンボリックリンク、資格情報・エージェント制御ファイル
+  (`~/.ssh`、`.env` など)、ディレクトリは、Chrome に何かを頼む前に拒否します。
 - `drag` はマウスイベントベースです (HTML5 dragstart/drop ベースの UI は
   シミュレートしません)。
 - console / network の記録は、ツールがページに最初に触れた時点から

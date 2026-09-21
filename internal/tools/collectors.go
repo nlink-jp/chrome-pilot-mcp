@@ -78,7 +78,9 @@ type screencastState struct {
 	// collecting means frames are still being accepted. A limit stops
 	// collection without ending the recording, so stop still reports.
 	collecting bool
-	filePath   string
+	// outRel is the output file relative to workDir, checked at start
+	// (ADR-0006); "" means the default name under screencasts/.
+	outRel string
 	// workDir is the directory screencast_start was given, kept because the
 	// file is written at stop time (ADR-0004, renamed by ADR-0005).
 	workDir string

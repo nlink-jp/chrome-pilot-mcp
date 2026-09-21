@@ -107,6 +107,12 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 	if err != nil {
 		return nil, err
 	}
+	outRel := ""
+	if args.FilePath != "" {
+		if outRel, err = outputUnder(wsRoot, args.FilePath); err != nil {
+			return nil, err
+		}
+	}
 	p, err := m.selectedPage(ctx)
 	if err != nil {
 		return nil, err
@@ -124,7 +130,7 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 	state := &screencastState{
 		active:        true,
 		collecting:    true,
-		filePath:      args.FilePath,
+		outRel:        outRel,
 		workDir:       wsRoot,
 		maxFrames:     maxFrames,
 		maxBytes:      defaultScreencastMaxBytes,
@@ -207,7 +213,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	frames := sc.frames
 	dropped := sc.dropped
 	limitHit := sc.limitHit
-	filePath := sc.filePath
+	outRel := sc.outRel
 	wsRoot := sc.workDir
 	delete(m.col.screencasts, p.sessionID)
 	m.col.mu.Unlock()
@@ -231,21 +237,29 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 		})
 	}
 
-	if filePath == "" {
-		name := fmt.Sprintf("cast-%s.gif", time.Now().Format("20060102-150405"))
-		filePath, err = m.fileIn(wsRoot, "screencasts", name)
-		if err != nil {
-			return nil, toolerr.New(toolerr.CodeWorkspaceFailed, err.Error())
-		}
-	} else if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
-		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "create output dir: %v", err)
+	if outRel == "" {
+		outRel = filepath.Join("screencasts", fmt.Sprintf("cast-%s.gif", time.Now().Format("20060102-150405")))
 	}
+	filePath := filepath.Join(wsRoot, outRel)
 
 	g, stats, err := assembleGIF(frames)
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Create(filePath)
+	// Written through os.Root: start checked the path, and the root refuses a
+	// symlink that would carry the write out of work_dir if one has appeared
+	// since (ADR-0006).
+	root, err := os.OpenRoot(wsRoot)
+	if err != nil {
+		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "open work_dir: %v", err)
+	}
+	defer root.Close()
+	if dir := filepath.Dir(outRel); dir != "." {
+		if err := root.MkdirAll(dir, 0o755); err != nil {
+			return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "create output dir: %v", err)
+		}
+	}
+	f, err := root.Create(outRel)
 	if err != nil {
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "create %s: %v", filePath, err)
 	}

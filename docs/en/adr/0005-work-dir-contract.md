@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-13
 - Amends: [ADR-0004](0004-per-call-workspace-root.md) (per-call workspaceRoot)
+- Amended by: [ADR-0006](0006-writes-and-uploads-under-work-dir.md) (the screencast `filePath` and `upload_file` stay under `work_dir`)
 
 ## Context
 

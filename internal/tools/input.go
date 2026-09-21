@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"strings"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/mcpserver"
@@ -430,6 +429,7 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	var args struct {
 		UID             string `json:"uid"`
 		FilePath        string `json:"filePath"`
+		WorkDir         string `json:"work_dir"`
 		IncludeSnapshot bool   `json:"includeSnapshot"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
@@ -438,8 +438,13 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	if args.UID == "" || args.FilePath == "" {
 		return nil, toolerr.New(toolerr.CodeMissingArgument, "uid and filePath are required")
 	}
-	if _, err := os.Stat(args.FilePath); err != nil {
-		return nil, toolerr.Newf(toolerr.CodeInvalidArguments, "filePath: %v", err)
+	wsRoot, err := resolveWorkDir(ctx, args.WorkDir)
+	if err != nil {
+		return nil, err
+	}
+	path, err := inputUnder(wsRoot, args.FilePath)
+	if err != nil {
+		return nil, err
 	}
 	p, err := m.selectedPage(ctx)
 	if err != nil {
@@ -452,12 +457,12 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
 	fileParams := t.nodeParams()
-	fileParams["files"] = []string{args.FilePath}
+	fileParams["files"] = []string{path}
 	err = m.rendererCall(callCtx, t.sessionID, "DOM.setFileInputFiles", fileParams, nil)
 	if err != nil {
 		return nil, err
 	}
-	return m.finishInput(ctx, p, map[string]any{"uploaded": args.FilePath, "to": args.UID}, args.IncludeSnapshot)
+	return m.finishInput(ctx, p, map[string]any{"uploaded": path, "to": args.UID}, args.IncludeSnapshot)
 }
 
 func (m *Manager) handleDialog(ctx context.Context, raw json.RawMessage) (any, error) {

@@ -285,26 +285,93 @@ func TestUploadFile(t *testing.T) {
 	m := newTestManager(t, Config{}, f)
 	snapshotFirst(t, m)
 
-	path := filepath.Join(t.TempDir(), "data.csv")
+	work := resolvedTempDir(t)
+	path := filepath.Join(work, "data.csv")
 	if err := os.WriteFile(path, []byte("a,b\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := callTool(t, m.uploadFile, fmt.Sprintf(`{"uid":"1_3","filePath":%q}`, path)); err != nil {
-		t.Fatalf("upload_file: %v", err)
+	// Relative to work_dir and absolute under it both reach the page as the
+	// file's real path.
+	for _, name := range []string{"data.csv", path} {
+		if _, err := callTool(t, m.uploadFile,
+			`{"uid":"1_3","filePath":`+quote(name)+`,"work_dir":`+quote(work)+`}`); err != nil {
+			t.Fatalf("upload_file %q: %v", name, err)
+		}
 	}
 	calls := f.callsOf("DOM.setFileInputFiles")
-	if len(calls) != 1 {
+	if len(calls) != 2 {
 		t.Fatalf("setFileInputFiles calls = %d", len(calls))
 	}
-	files := calls[0].params["files"].([]any)
-	if files[0] != path {
-		t.Errorf("files = %v", files)
+	for _, c := range calls {
+		if files := c.params["files"].([]any); files[0] != path {
+			t.Errorf("files = %v, want %q", files, path)
+		}
 	}
 
-	_, err := callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"/no/such/file.bin"}`)
+	_, err := callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"no-such-file.bin","work_dir":`+quote(work)+`}`)
 	var te *toolerr.Error
 	if !errors.As(err, &te) || te.Code != toolerr.CodeInvalidArguments {
 		t.Errorf("missing file should be invalid_arguments, got %v", err)
+	}
+}
+
+// upload_file hands a page only a file under work_dir (ADR-0006): the page can
+// send what it is given anywhere, so a path outside, a link out of work_dir,
+// a credential file inside it and a directory are all refused before Chrome
+// is asked for anything.
+func TestUploadFileTakesOnlyAFileUnderWorkDir(t *testing.T) {
+	work := resolvedTempDir(t)
+	outside := filepath.Join(resolvedTempDir(t), "secret.txt")
+	if err := os.WriteFile(outside, []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(work, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".env"), []byte("TOKEN=x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(work, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, filePath, code, reason string
+	}{
+		{"absolute outside", outside, toolerr.CodePathNotAllowed, "outside_work_dir"},
+		{"climbs out", "../" + filepath.Base(filepath.Dir(outside)) + "/secret.txt", toolerr.CodePathNotAllowed, "outside_work_dir"},
+		{"link out of work_dir", "link.txt", toolerr.CodePathNotAllowed, "outside_work_dir"},
+		{"credential file inside", ".env", toolerr.CodePathNotAllowed, "sensitive_path"},
+		{"directory", "sub", toolerr.CodeInvalidArguments, ""},
+		{"work_dir itself", ".", toolerr.CodePathNotAllowed, "outside_work_dir"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeChrome(t, "about:blank")
+			m := newTestManager(t, Config{}, f)
+			snapshotFirst(t, m)
+			_, err := callTool(t, m.uploadFile,
+				`{"uid":"1_3","filePath":`+quote(tc.filePath)+`,"work_dir":`+quote(work)+`}`)
+			var te *toolerr.Error
+			if !errors.As(err, &te) || te.Code != tc.code {
+				t.Fatalf("want %s, got %v", tc.code, err)
+			}
+			if tc.reason != "" && te.Details["reason"] != tc.reason {
+				t.Errorf("reason = %v, want %s", te.Details["reason"], tc.reason)
+			}
+			if n := len(f.callsOf("DOM.setFileInputFiles")); n != 0 {
+				t.Errorf("Chrome was handed the file (%d calls)", n)
+			}
+		})
+	}
+
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	snapshotFirst(t, m)
+	_, err := callTool(t, m.uploadFile, `{"uid":"1_3","filePath":`+quote(outside)+`}`)
+	var te *toolerr.Error
+	if !errors.As(err, &te) || te.Code != toolerr.CodeWorkDirRequired {
+		t.Errorf("no work_dir: want work_dir_required, got %v", err)
 	}
 }
 

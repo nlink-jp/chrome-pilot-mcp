@@ -3,6 +3,8 @@ package tools
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -174,7 +176,11 @@ func TestActionsWithDialogAlreadyOpenFailFast(t *testing.T) {
 			return callTool(t, m.evaluateScript, `{"function":"() => 1"}`)
 		}},
 		{"upload_file", func(m *Manager) (any, error) {
-			return callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"`+t.TempDir()+`"}`)
+			dir := resolvedTempDir(t)
+			if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"f.txt","work_dir":`+quote(dir)+`}`)
 		}},
 	}
 	for _, tc := range tools {

@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-13
 - Amends: [ADR-0004](0004-per-call-workspace-root.ja.md)（呼び出しごとの workspaceRoot）
+- Amended by: [ADR-0006](0006-writes-and-uploads-under-work-dir.ja.md)（録画の `filePath` と `upload_file` を `work_dir` の中に限る）
 
 ## Context
 

@@ -89,6 +89,15 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   the argument too — an agent confined to its own directories cannot open
   what lands anywhere else, and a path it cannot open is not a result.
   Validate where the argument arrives, not where the file is written.
+- Every file argument stays under `work_dir` (ADR-0006, ADR-021 §7), and the
+  rules live in one place, `internal/tools/confine.go`: `outputUnder` for a
+  file this server writes (`screencast_start`'s `filePath`, written at stop
+  through `os.Root`), `inputUnder` for a file it hands to a page
+  (`upload_file`, which therefore takes `work_dir` too). A new tool taking a
+  file path goes through one of them — a path argument checked only for a
+  suffix or for existence is how both gaps got in, with tests pinning them.
+  Refusals are `path_not_allowed` with `details.reason`
+  (`outside_work_dir` / `sensitive_path`).
 - The initialize `instructions` string is `tools.Instructions`
   (`internal/tools/instructions.go`), set on the server by `cmd/root.go`
   `serve` via `srv.SetInstructions`. It is the first thing a model reads, so

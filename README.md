@@ -81,6 +81,15 @@ Notable behaviors:
   (`config.toml` and the managed browser profiles: `~/Library/Application
   Support/chrome-pilot-mcp` on macOS, `~/.config/chrome-pilot-mcp` on Linux)
   is refused with `work_dir_denied`, subdirectories included.
+- Nothing is written outside `work_dir`: a `filePath` given to
+  `screencast_start` is relative to it, or absolute inside it, and anything
+  else is refused with `path_not_allowed` before recording starts.
+- `upload_file` takes `work_dir` too and hands the page only a file under it
+  (relative to it, or absolute inside it) — a page can send what it is given
+  anywhere, so copy the file into your work directory first. A path outside,
+  a symlink leading out, a credential or agent-control file (`~/.ssh`, `.env`
+  and the like) and a directory are refused before Chrome is asked for
+  anything.
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
   simulated.
 - Console and network capture starts when a page is first touched by a
