@@ -210,6 +210,7 @@ func serve(cfg tools.Config, stdin io.Reader, stdout, stderr io.Writer) int {
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	tr := transport.NewStdioTransport(stdin, stdout)
 	srv := mcpserver.New("chrome-pilot-mcp", Version, tr, logger)
+	srv.SetInstructions(tools.Instructions)
 
 	m := tools.NewManager(cfg, logger)
 	defer m.Shutdown()

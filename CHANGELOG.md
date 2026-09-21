@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The initialize reply now carries `instructions`**, the hint a client hands
+  to its model before any tool list. It says what the server is for, to start
+  with `list_pages` and `take_snapshot`, that `take_screenshot` and
+  `screencast_start` require an absolute `work_dir` with no default and where
+  their files land, and that an open dialog waits for `handle_dialog`. Every
+  other work-dir server in the org already sent one (organization ADR-021).
+- Tests pin it: the initialize result carries what `SetInstructions` was given
+  and omits the key when nothing was; the text states the work-dir contract and
+  names every tool whose schema declares `work_dir`; every code name in it is a
+  registered tool or a declared argument; no retired work-dir name appears; and
+  the served binary sets it.
+
 ### Fixed
 
 - **`make verify-release` now fails closed.** Its last block chained unzip, the

@@ -164,6 +164,44 @@ func TestRawResultContent(t *testing.T) {
 	}
 }
 
+// TestInitializeCarriesInstructions pins the field a client hands to its model
+// before any tool list: SetInstructions must reach the initialize result, and
+// a server that sets none must leave the key out rather than send "".
+func TestInitializeCarriesInstructions(t *testing.T) {
+	initialize := func(setup func(*Server)) map[string]json.RawMessage {
+		t.Helper()
+		in := bytes.NewBufferString(
+			`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}` + "\n")
+		var out bytes.Buffer
+		srv := New("chrome-pilot-mcp", "test", transport.NewStdioTransport(in, &out),
+			slog.New(slog.NewTextHandler(io.Discard, nil)))
+		setup(srv)
+		if err := srv.Serve(context.Background()); err != nil {
+			t.Fatalf("serve: %v", err)
+		}
+		var resp struct {
+			Result map[string]json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &resp); err != nil {
+			t.Fatalf("initialize response is not one JSON object: %v\n%s", err, out.String())
+		}
+		return resp.Result
+	}
+
+	result := initialize(func(s *Server) { s.SetInstructions("call list_pages first") })
+	var got string
+	if err := json.Unmarshal(result["instructions"], &got); err != nil {
+		t.Fatalf("initialize result has no string instructions: %v (result: %v)", err, result)
+	}
+	if got != "call list_pages first" {
+		t.Errorf("instructions = %q, want the text given to SetInstructions", got)
+	}
+
+	if raw, present := initialize(func(*Server) {})["instructions"]; present {
+		t.Errorf("a server with no instructions sent the key anyway: %s", raw)
+	}
+}
+
 func splitLines(s string) []string {
 	s = strings.TrimRight(s, "\n")
 	if s == "" {

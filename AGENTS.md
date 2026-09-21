@@ -46,6 +46,7 @@ internal/browser/           # Chrome launch/attach, executable discovery
 internal/tools/             # Manager (page/session state) + tool handlers
                             #   pages/debug/input/console/network/emulation/
                             #   screencast; collectors.go = passive event state
+                            #   instructions.go = initialize `instructions` text
 scripts/                    # codesign/notarize/brew (shared org scripts)
 docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 ```
@@ -87,6 +88,15 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   the argument too — an agent confined to its own directories cannot open
   what lands anywhere else, and a path it cannot open is not a result.
   Validate where the argument arrives, not where the file is written.
+- The initialize `instructions` string is `tools.Instructions`
+  (`internal/tools/instructions.go`), set on the server by `cmd/root.go`
+  `serve` via `srv.SetInstructions`. It is the first thing a model reads, so
+  it states the work-dir contract; there is no usage tool, so it points at
+  `list_pages` and `take_snapshot`. `workdir_contract_test.go` checks it
+  against the registered tools: every tool whose schema declares `work_dir`
+  must be named, and every snake_case / lowerCamelCase word in it must be a
+  registered tool or a declared argument. Adding or renaming a tool can
+  therefore fail there — fix the text, not the test.
 - Config precedence lives in `cmd.buildConfig`: only flags reported by
   `flag.Visit` override the file, so an unset flag's zero value can never
   clobber a configured setting. Never search `./config.toml` (ADR-0002).

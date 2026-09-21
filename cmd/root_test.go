@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/tools"
 )
 
 // The shared homebrew formula template — used by every tool in the org — runs
@@ -58,6 +61,31 @@ func TestServeListsTools(t *testing.T) {
 		if !strings.Contains(out, `"name":"`+tool+`"`) {
 			t.Errorf("tools/list missing %s: %s", tool, out)
 		}
+	}
+}
+
+// TestServeSendsInstructions drives the served binary's entry point: the
+// initialize reply must carry tools.Instructions. The mcpserver test proves the
+// field is carried when set; this one proves the binary sets it.
+func TestServeSendsInstructions(t *testing.T) {
+	stdin := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}` + "\n")
+	var stdout, stderr bytes.Buffer
+	if code := Run(nil, stdin, &stdout, &stderr); code != 0 {
+		t.Fatalf("serve exit code %d, stderr: %s", code, stderr.String())
+	}
+	var resp struct {
+		Result struct {
+			Instructions string `json:"instructions"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout.String())), &resp); err != nil {
+		t.Fatalf("initialize reply is not one JSON object: %v\n%s", err, stdout.String())
+	}
+	if tools.Instructions == "" {
+		t.Fatal("tools.Instructions is empty")
+	}
+	if resp.Result.Instructions != tools.Instructions {
+		t.Errorf("initialize instructions = %q, want tools.Instructions", resp.Result.Instructions)
 	}
 }
 
