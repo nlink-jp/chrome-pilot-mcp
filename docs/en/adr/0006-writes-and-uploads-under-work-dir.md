@@ -37,8 +37,11 @@ superseded it the same day.
    resolved. The check follows every symlink that already exists along the path,
    and it runs at `screencast_start`, the call that named the path (ADR-0004's
    discipline), before a frame is collected. The file is written through
-   `os.Root` on `work_dir`, which refuses a symlink that would carry the write out
-   of the directory if one appears between start and stop.
+   an `os.Root` opened on `work_dir` at start and held until stop, which refuses
+   a symlink that would carry the write out of the directory if one appears in
+   between — and, being opened at start, does not follow `work_dir` itself if it
+   is swapped for a link meanwhile. A dangling link counts by its target, since
+   creating through it would create the target.
 2. **`upload_file` takes `work_dir`, required, and hands the page only a file
    under it.** `filePath` is relative to `work_dir` or absolute under it. The
    file's real path must lie under `work_dir`, stay off the credential blacklist,
@@ -46,10 +49,20 @@ superseded it the same day.
    checked first, on both spellings of the path (ADR-021 §7), so a link from
    `work_dir` into `~/.ssh` is refused as a credential file rather than merely as
    an outside one.
-3. **A refusal is `path_not_allowed`**, and `details.reason` says which rule:
-   `outside_work_dir` or `sensitive_path`. A missing file or a directory stays
-   `invalid_arguments`.
-4. `go.mod` moves to Go 1.25 for `os.Root.MkdirAll`. The standard library is
+3. **Inside `work_dir`, two kinds of place stay refused in both directions**:
+   the credential blacklist, and this server's own directory (`config.toml` and
+   the managed browser profiles). A `work_dir` may legitimately be a parent of
+   either — `~/.config`, `~/Library/Application Support` — and the files under it
+   would then be a live profile's cookies.
+4. **Every file this server writes is written beside its name and renamed into
+   place, through an `os.Root`** (`writeUnder`) — `take_screenshot` included, so
+   a `screenshots/` that is a link out of `work_dir` is refused. An existing
+   entry, a hard link to a file outside `work_dir` among them, is replaced rather
+   than written through.
+5. **A refusal is `path_not_allowed`**, and `details.reason` says which rule:
+   `outside_work_dir`, `sensitive_path` or `server_dir`. A missing file or a
+   directory stays `invalid_arguments`.
+6. `go.mod` moves to Go 1.25 for `os.Root.MkdirAll`. The standard library is
    still the only dependency.
 
 ## Consequences
@@ -59,10 +72,22 @@ superseded it the same day.
   file into its work directory. A `screencast_start` naming a path outside
   `work_dir` is refused at start. A runtime that sets `_meta["jp.nlink/work_dir"]`
   on every call needs no change to its `upload_file` calls.
+- A relative `filePath` used to be relative to the server's own working
+  directory; it is now relative to `work_dir`. An absolute `filePath` spelled
+  through a symlinked directory comes back as its resolved path.
 - `upload_file` now reports the file's real path in `uploaded`, which is the path
-  Chrome was given.
-- `internal/workdir` is unchanged and stays byte-identical to the fleet's copies;
-  the rules live in `internal/tools/confine.go`.
+  Chrome was given; for a symlink the page sees the target's name.
+- A `screencasts/` or `screenshots/` that is an **absolute** symlink, even one
+  pointing inside `work_dir`, now fails with `workspace_failed`: `os.Root` refuses
+  absolute links. A relative link inside `work_dir` works.
+- `internal/workdir` is unchanged; the rules live in `internal/tools/confine.go`.
+- **What this does not close.** Chrome is handed a path and opens the file later,
+  so a file swapped for a link after the check is read as the link's target;
+  `DOM.setFileInputFiles` takes paths, not open files. An upload of a hard link
+  to a file outside `work_dir` is not detected (ADR-021 does not ask for it). The
+  blacklist comparison is case-sensitive, so on a case-insensitive filesystem
+  `.ENV` or `~/.SSH` passes it; that is in `internal/workdir`, shared by the
+  fleet, and is fixed there rather than here.
 
 ## References
 

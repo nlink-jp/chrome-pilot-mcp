@@ -12,6 +12,7 @@ import (
 	"image/draw"
 	"image/gif"
 	"image/jpeg"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,14 +114,23 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 			return nil, err
 		}
 	}
+	// The root is opened now and held until stop: reopening work_dir by path
+	// at stop would follow it if it had been swapped for a link meanwhile
+	// (ADR-0006).
+	root, err := os.OpenRoot(wsRoot)
+	if err != nil {
+		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "open work_dir: %v", err)
+	}
 	p, err := m.selectedPage(ctx)
 	if err != nil {
+		_ = root.Close()
 		return nil, err
 	}
 
 	m.col.mu.Lock()
 	if sc := m.col.screencasts[p.sessionID]; sc != nil && sc.active {
 		m.col.mu.Unlock()
+		_ = root.Close()
 		return nil, toolerr.New(toolerr.CodeInvalidArguments, "a screencast is already recording on this page; call screencast_stop first")
 	}
 	maxFrames := args.MaxFrames
@@ -132,6 +142,7 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 		collecting:    true,
 		outRel:        outRel,
 		workDir:       wsRoot,
+		root:          root,
 		maxFrames:     maxFrames,
 		maxBytes:      defaultScreencastMaxBytes,
 		maxDurationMS: args.MaxDurationMS,
@@ -184,6 +195,7 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 		m.col.mu.Lock()
 		delete(m.col.screencasts, p.sessionID)
 		m.col.mu.Unlock()
+		_ = root.Close()
 		return nil, err
 	}
 	return map[string]any{"recording": true, "maxWidth": maxWidth, "everyNthFrame": nth}, nil
@@ -215,8 +227,10 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	limitHit := sc.limitHit
 	outRel := sc.outRel
 	wsRoot := sc.workDir
+	root := sc.root
 	delete(m.col.screencasts, p.sessionID)
 	m.col.mu.Unlock()
+	defer func() { _ = root.Close() }()
 
 	callCtx, cancel := context.WithTimeout(ctx, defaultCallTimeout)
 	defer cancel()
@@ -246,26 +260,11 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	if err != nil {
 		return nil, err
 	}
-	// Written through os.Root: start checked the path, and the root refuses a
-	// symlink that would carry the write out of work_dir if one has appeared
-	// since (ADR-0006).
-	root, err := os.OpenRoot(wsRoot)
-	if err != nil {
-		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "open work_dir: %v", err)
-	}
-	defer root.Close()
-	if dir := filepath.Dir(outRel); dir != "." {
-		if err := root.MkdirAll(dir, 0o755); err != nil {
-			return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "create output dir: %v", err)
-		}
-	}
-	f, err := root.Create(outRel)
-	if err != nil {
-		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "create %s: %v", filePath, err)
-	}
-	defer f.Close()
-	if err := gif.EncodeAll(f, g); err != nil {
-		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "encode gif: %v", err)
+	// Written through the root opened at start: start checked the path, and
+	// the root refuses a symlink that would carry the write out of work_dir if
+	// one has appeared since (ADR-0006).
+	if err := writeUnder(root, outRel, func(w io.Writer) error { return gif.EncodeAll(w, g) }); err != nil {
+		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "%s: %v", filePath, err)
 	}
 
 	// recordedMs is the wall-clock span the frames cover; gifDurationMs is

@@ -11,8 +11,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -381,7 +379,8 @@ func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
 
 // ---- output ----
 
-// fileIn places a file under the directory the CALLER supplied.
+// Files are written under the directory the CALLER supplied, through
+// writeUnder (confine.go).
 //
 // The server has no workspace of its own any more. It used to pick one at
 // startup — a flag, a config key, else a temp directory — and hand back paths
@@ -390,17 +389,6 @@ func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
 // project and a session directory. The information needed to choose lives with
 // the caller, so the caller names it on every call (ADR-0005; organization
 // ADR-021).
-func (m *Manager) fileIn(root, subdir, name string) (string, error) {
-	return fileUnder(root, subdir, name)
-}
-
-func fileUnder(root, subdir, name string) (string, error) {
-	dir := filepath.Join(root, subdir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, name), nil
-}
 
 // resolveWorkDir resolves and validates the caller's work directory for one
 // call: the work_dir argument, else the runtime hint in the request's _meta,

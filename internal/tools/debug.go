@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -142,11 +144,16 @@ func (m *Manager) takeScreenshot(ctx context.Context, raw json.RawMessage) (any,
 		ext = "jpg"
 	}
 	name := fmt.Sprintf("shot-%s.%s", time.Now().Format("20060102-150405.000"), ext)
-	path, err := m.fileIn(wsRoot, "screenshots", name)
+	// Through an os.Root on work_dir, so a screenshots/ that is a link out of
+	// it is refused rather than followed (ADR-0006).
+	rel := filepath.Join("screenshots", name)
+	path := filepath.Join(wsRoot, rel)
+	root, err := os.OpenRoot(wsRoot)
 	if err != nil {
-		return nil, toolerr.New(toolerr.CodeWorkspaceFailed, err.Error())
+		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "open work_dir: %v", err)
 	}
-	if err := os.WriteFile(path, img, 0o644); err != nil {
+	defer func() { _ = root.Close() }()
+	if err := writeUnder(root, rel, func(w io.Writer) error { _, err := w.Write(img); return err }); err != nil {
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "write screenshot: %v", err)
 	}
 

@@ -91,13 +91,19 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   Validate where the argument arrives, not where the file is written.
 - Every file argument stays under `work_dir` (ADR-0006, ADR-021 §7), and the
   rules live in one place, `internal/tools/confine.go`: `outputUnder` for a
-  file this server writes (`screencast_start`'s `filePath`, written at stop
-  through `os.Root`), `inputUnder` for a file it hands to a page
-  (`upload_file`, which therefore takes `work_dir` too). A new tool taking a
-  file path goes through one of them — a path argument checked only for a
-  suffix or for existence is how both gaps got in, with tests pinning them.
-  Refusals are `path_not_allowed` with `details.reason`
-  (`outside_work_dir` / `sensitive_path`).
+  file this server writes (`screencast_start`'s `filePath`), `inputUnder` for a
+  file it hands to a page (`upload_file`, which therefore takes `work_dir`
+  too), `refusedLocation` for what stays refused inside `work_dir` (the
+  credential blacklist and `serverOwnedDirs()` — a `work_dir` may be their
+  parent), and `writeUnder` for every write: temp file + rename through an
+  `os.Root`, so a symlink out of `work_dir` is refused and a hard link is
+  replaced, not written through. The screencast opens its root at start and
+  holds it to stop. A new tool taking a file path goes through these — a path
+  argument checked only for a suffix or for existence is how both gaps got
+  in, with tests pinning them. Refusals are `path_not_allowed` with
+  `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir`).
+  `workdir.Sensitive` resolves symlinks itself, so passing it the given path
+  alone would still catch a link into `~/.ssh`; pass both forms anyway.
 - The initialize `instructions` string is `tools.Instructions`
   (`internal/tools/instructions.go`), set on the server by `cmd/root.go`
   `serve` via `srv.SetInstructions`. It is the first thing a model reads, so

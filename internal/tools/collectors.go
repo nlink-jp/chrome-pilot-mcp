@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -82,8 +83,10 @@ type screencastState struct {
 	// (ADR-0006); "" means the default name under screencasts/.
 	outRel string
 	// workDir is the directory screencast_start was given, kept because the
-	// file is written at stop time (ADR-0004, renamed by ADR-0005).
+	// file is written at stop time (ADR-0004, renamed by ADR-0005); root is
+	// that directory opened at start, which the write goes through (ADR-0006).
 	workDir string
+	root    *os.Root
 	frames  []screencastFrame
 	dropped int
 	bytes   int

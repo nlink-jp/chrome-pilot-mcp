@@ -88,8 +88,10 @@ Notable behaviors:
   (relative to it, or absolute inside it) — a page can send what it is given
   anywhere, so copy the file into your work directory first. A path outside,
   a symlink leading out, a credential or agent-control file (`~/.ssh`, `.env`
-  and the like) and a directory are refused before Chrome is asked for
-  anything.
+  and the like), anything in this server's own directory, and a directory are
+  refused before Chrome is asked for anything. The page is given the file's
+  real path — for a symlink, its target, whose name the page sees — and the
+  result's `uploaded` reports that path.
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
   simulated.
 - Console and network capture starts when a page is first touched by a
@@ -111,7 +113,7 @@ Or grab a prebuilt binary for linux/amd64, linux/arm64, darwin/arm64, or
 windows/amd64 from the
 [releases page](https://github.com/nlink-jp/chrome-pilot-mcp/releases).
 
-To build from source (Go 1.23+):
+To build from source (Go 1.25+):
 
 ```sh
 git clone https://github.com/nlink-jp/chrome-pilot-mcp
