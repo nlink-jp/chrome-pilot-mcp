@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
@@ -231,4 +232,85 @@ func feedOneFrame(t *testing.T, m *Manager, f *fakeChrome) {
 		sc := m.col.screencasts["sess-T1"]
 		return sc != nil && len(sc.frames) == 1
 	})
+}
+
+// caseInsensitive reports whether dir's filesystem folds case, the default
+// for APFS; the spelling tests below mean nothing elsewhere.
+func caseInsensitive(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "case-probe")
+	if err := os.Mkdir(probe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(probe) }()
+	_, err := os.Stat(filepath.Join(dir, "CASE-PROBE"))
+	return err == nil
+}
+
+// The server's own directory under another spelling of its name is the same
+// directory on a case-insensitive filesystem, and is refused as such: the
+// comparison is by identity, not by name (the second review of ADR-0006).
+func TestTheServerOwnDirectoryIsRefusedUnderAnySpelling(t *testing.T) {
+	own := serverDir(t)
+	parent := filepath.Dir(own)
+	if !caseInsensitive(t, parent) {
+		t.Skip("case-sensitive filesystem: another spelling is another directory")
+	}
+	mustWrite(t, filepath.Join(own, "profiles", "p", "Default", "Cookies"), "session")
+	shout := strings.ToUpper(filepath.Base(own))
+
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	snapshotFirst(t, m)
+	_, err := callTool(t, m.uploadFile, `{"uid":"1_3","filePath":`+
+		quote(filepath.Join(shout, "profiles", "p", "Default", "Cookies"))+`,"work_dir":`+quote(parent)+`}`)
+	wantPathRefused(t, err, "server_dir")
+	_, err = callTool(t, m.screencastStart, `{"filePath":`+quote(filepath.Join(shout, "x.gif"))+`,"work_dir":`+quote(parent)+`}`)
+	wantPathRefused(t, err, "server_dir")
+}
+
+// A default output directory that is a link into the server's own directory
+// — inside work_dir, so os.Root follows it — is refused too: every write
+// checks where it lands, not only a caller-named path.
+func TestScreenshotsLinkedIntoTheServerOwnDirectoryAreRefused(t *testing.T) {
+	own := serverDir(t)
+	parent := filepath.Dir(own)
+	profile := filepath.Join(own, "profiles", "p", "Default")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(parent, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(rel, filepath.Join(parent, "screenshots")); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "https://example.com/")
+	f.overrides["Page.captureScreenshot"] = func(string, map[string]any) (any, string) {
+		return map[string]any{"data": base64.StdEncoding.EncodeToString([]byte("PNG"))}, ""
+	}
+	m := newTestManager(t, Config{}, f)
+	_, err = callTool(t, m.takeScreenshot, `{"work_dir":`+quote(parent)+`}`)
+	wantPathRefused(t, err, "server_dir")
+	wantEmpty(t, profile)
+}
+
+// Nothing planted at a guessable temporary name is written through: the
+// temporary file has a random name and is created exclusively.
+func TestAPlantedTemporaryNameIsNotWrittenThrough(t *testing.T) {
+	work := resolvedTempDir(t)
+	outside := filepath.Join(resolvedTempDir(t), "keep")
+	mustWrite(t, outside, "original")
+	for _, planted := range []string{".hl.gif.partial", ".hl.gif.tmp", "hl.gif.partial"} {
+		if err := os.Link(outside, filepath.Join(work, planted)); err != nil {
+			t.Skipf("hard links unavailable here: %v", err)
+		}
+	}
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	recordOneFrame(t, m, f, `{"filePath":"hl.gif","work_dir":`+quote(work)+`}`)
+	if b, _ := os.ReadFile(outside); string(b) != "original" {
+		t.Errorf("the file outside work_dir was overwritten through a temporary name: %q", b)
+	}
 }

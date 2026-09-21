@@ -53,12 +53,18 @@ superseded it the same day.
    the credential blacklist, and this server's own directory (`config.toml` and
    the managed browser profiles). A `work_dir` may legitimately be a parent of
    either — `~/.config`, `~/Library/Application Support` — and the files under it
-   would then be a live profile's cookies.
-4. **Every file this server writes is written beside its name and renamed into
-   place, through an `os.Root`** (`writeUnder`) — `take_screenshot` included, so
-   a `screenshots/` that is a link out of `work_dir` is refused. An existing
-   entry, a hard link to a file outside `work_dir` among them, is replaced rather
-   than written through.
+   would then be a live profile's cookies. The server's directory is compared by
+   **file identity**, not by name: APFS is case-insensitive by default, and a
+   string comparison let `CHROME-PILOT-MCP/profiles/…/Cookies` through (second
+   review).
+4. **Every file this server writes goes through `writeUnder`**: an `os.Root`, so
+   a link out of `work_dir` is refused; a check, by identity, of the directory
+   the file lands in, so a `screenshots/` or `screencasts/` linked into the
+   server's own directory is refused too — every write, not only a caller-named
+   one; and a temporary name nobody can guess, created exclusively and renamed
+   into place, so an existing entry (a hard link to a file outside `work_dir`
+   among them) is replaced rather than written through, and nothing planted at a
+   predictable temporary name is written through either.
 5. **A refusal is `path_not_allowed`**, and `details.reason` says which rule:
    `outside_work_dir`, `sensitive_path` or `server_dir`. A missing file or a
    directory stays `invalid_arguments`.
@@ -81,13 +87,18 @@ superseded it the same day.
   pointing inside `work_dir`, now fails with `workspace_failed`: `os.Root` refuses
   absolute links. A relative link inside `work_dir` works.
 - `internal/workdir` is unchanged; the rules live in `internal/tools/confine.go`.
+  Written files are now always mode `0644`.
 - **What this does not close.** Chrome is handed a path and opens the file later,
   so a file swapped for a link after the check is read as the link's target;
   `DOM.setFileInputFiles` takes paths, not open files. An upload of a hard link
   to a file outside `work_dir` is not detected (ADR-021 does not ask for it). The
   blacklist comparison is case-sensitive, so on a case-insensitive filesystem
   `.ENV` or `~/.SSH` passes it; that is in `internal/workdir`, shared by the
-  fleet, and is fixed there rather than here.
+  fleet, and is fixed there rather than here. The same package validates
+  `work_dir` itself by name, so a case variant of this server's directory is
+  accepted as a `work_dir` — every write and upload under it is then refused by
+  the identity check above. A recording abandoned without `screencast_stop`
+  keeps its frames and one open directory handle until the process exits.
 
 ## References
 

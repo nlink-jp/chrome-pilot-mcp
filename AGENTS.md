@@ -102,6 +102,10 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   argument checked only for a suffix or for existence is how both gaps got
   in, with tests pinning them. Refusals are `path_not_allowed` with
   `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir`).
+  Compare places by identity (`insideByIdentity`, `os.SameFile`), never by
+  name: this disk is case-insensitive, and two reviews in a row got past a
+  name comparison. Temporary files get a random name and `O_EXCL`
+  (`createExclusive`).
   `workdir.Sensitive` resolves symlinks itself, so passing it the given path
   alone would still catch a link into `~/.ssh`; pass both forms anyway.
 - The initialize `instructions` string is `tools.Instructions`

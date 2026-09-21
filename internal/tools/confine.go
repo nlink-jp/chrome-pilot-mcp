@@ -1,11 +1,14 @@
 package tools
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/workdir"
@@ -108,27 +111,54 @@ func refusedLocation(paths ...string) (reason, why string) {
 		return "sensitive_path", why
 	}
 	for _, d := range serverOwnedDirs() {
-		forms := []string{filepath.Clean(d)}
-		if r, err := filepath.EvalSymlinks(d); err == nil && r != forms[0] {
-			forms = append(forms, r)
+		own, err := os.Stat(d)
+		if err != nil {
+			continue // not there: nothing of this server's to reach
 		}
 		for _, p := range paths {
-			for _, f := range forms {
-				if within(p, f) {
-					return "server_dir", "it is inside this server's own directory " + d +
-						" (config.toml and the managed browser profiles)"
-				}
+			if insideByIdentity(p, own) {
+				return "server_dir", "it is inside this server's own directory " + d +
+					" (config.toml and the managed browser profiles)"
 			}
 		}
 	}
 	return "", ""
 }
 
-// writeUnder writes a file at rel under root, creating its directory. It
-// writes a temporary file beside it and renames it into place, so an entry
-// already at rel — a hard link to a file outside work_dir, or a symlink — is
-// replaced rather than written through. root refuses any path, and any
-// symlink along it, that leaves the directory it was opened on.
+// insideByIdentity reports whether p, or an existing directory above it, is
+// the directory dir describes — compared by file identity, not by name. Names
+// mislead here: APFS is case-insensitive by default, so CHROME-PILOT-MCP and
+// chrome-pilot-mcp are one directory under two spellings, and a string
+// comparison passes the spelling it was not written for (the second review of
+// ADR-0006 got a profile's Cookies uploaded that way).
+func insideByIdentity(p string, dir os.FileInfo) bool {
+	for cur := p; ; {
+		if fi, err := os.Stat(cur); err == nil && os.SameFile(fi, dir) {
+			return true
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return false
+		}
+		cur = parent
+	}
+}
+
+// writeUnder writes a file at rel under root, creating its directory.
+//
+//   - root refuses any path, and any symlink along it, that leaves the
+//     directory it was opened on.
+//   - The directory the file lands in is checked against the refused
+//     locations by identity once it exists, so a screenshots/ or screencasts/
+//     that is a link into this server's own directory, still inside work_dir,
+//     is refused too — every write, not only a caller-named one.
+//   - The file is written under a temporary name nobody can guess, created
+//     exclusively, and renamed into place: an entry already at rel — a hard
+//     link to a file outside work_dir, or a symlink — is replaced rather than
+//     written through, and so is nothing planted at the temporary name.
+//
+// A refusal comes back as a *toolerr.Error; anything else is an I/O failure
+// for the caller to report (writeFailure).
 func writeUnder(root *os.Root, rel string, write func(io.Writer) error) error {
 	dir := filepath.Dir(rel)
 	if dir != "." {
@@ -136,8 +166,13 @@ func writeUnder(root *os.Root, rel string, write func(io.Writer) error) error {
 			return fmt.Errorf("create output dir: %w", err)
 		}
 	}
-	tmp := filepath.Join(dir, "."+filepath.Base(rel)+".partial")
-	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if real, err := filepath.EvalSymlinks(filepath.Join(root.Name(), dir)); err == nil {
+		if reason, why := refusedLocation(real); reason != "" {
+			return toolerr.Newf(toolerr.CodePathNotAllowed, "%s is refused: %s", rel, why).
+				WithDetails(map[string]any{"reason": reason, "path": rel})
+		}
+	}
+	tmp, f, err := createExclusive(root, dir, filepath.Base(rel))
 	if err != nil {
 		return fmt.Errorf("create %s: %w", rel, err)
 	}
@@ -152,6 +187,34 @@ func writeUnder(root *os.Root, rel string, write func(io.Writer) error) error {
 		return fmt.Errorf("place %s: %w", rel, err)
 	}
 	return nil
+}
+
+// createExclusive creates a new file beside name under a random temporary
+// name, failing rather than opening anything already there.
+func createExclusive(root *os.Root, dir, name string) (string, *os.File, error) {
+	for range 4 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", nil, err
+		}
+		tmp := filepath.Join(dir, "."+name+"."+hex.EncodeToString(b[:])+".partial")
+		f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return tmp, f, err
+	}
+	return "", nil, fmt.Errorf("no free temporary name beside %s", name)
+}
+
+// writeFailure turns a writeUnder error into the tool's error: a refusal as it
+// is, anything else as workspace_failed.
+func writeFailure(err error, what string) error {
+	var te *toolerr.Error
+	if errors.As(err, &te) {
+		return te
+	}
+	return toolerr.Newf(toolerr.CodeWorkspaceFailed, "%s: %v", what, err)
 }
 
 func firstErr(errs ...error) error {
@@ -195,12 +258,4 @@ func resolveExisting(p string) string {
 		}
 	}
 	return p
-}
-
-// within reports whether path is root or lies under it.
-func within(path, root string) bool {
-	if path == root {
-		return true
-	}
-	return strings.HasPrefix(path, strings.TrimSuffix(root, string(filepath.Separator))+string(filepath.Separator))
 }

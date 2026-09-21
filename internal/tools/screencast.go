@@ -264,7 +264,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	// the root refuses a symlink that would carry the write out of work_dir if
 	// one has appeared since (ADR-0006).
 	if err := writeUnder(root, outRel, func(w io.Writer) error { return gif.EncodeAll(w, g) }); err != nil {
-		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "%s: %v", filePath, err)
+		return nil, writeFailure(err, filePath)
 	}
 
 	// recordedMs is the wall-clock span the frames cover; gifDurationMs is
