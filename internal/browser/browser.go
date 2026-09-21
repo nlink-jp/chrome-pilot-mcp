@@ -46,6 +46,16 @@ type Browser struct {
 	tempProfile bool
 }
 
+// UserDataDir is the profile directory of a Chrome this process launched —
+// a throwaway one under the temp directory, a managed profile, or the one
+// --user-data-dir named — and "" for an attached browser or a nil receiver.
+func (b *Browser) UserDataDir() string {
+	if b == nil {
+		return ""
+	}
+	return b.userDataDir
+}
+
 // Launched reports whether this process launched Chrome itself (as opposed
 // to attaching to an existing one).
 func (b *Browser) Launched() bool { return b.cmd != nil }

@@ -438,11 +438,11 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	if args.UID == "" || args.FilePath == "" {
 		return nil, toolerr.New(toolerr.CodeMissingArgument, "uid and filePath are required")
 	}
-	wsRoot, err := resolveWorkDir(ctx, args.WorkDir)
+	wsRoot, err := m.workDir(ctx, args.WorkDir)
 	if err != nil {
 		return nil, err
 	}
-	path, err := inputUnder(wsRoot, args.FilePath)
+	path, err := inputUnder(wsRoot, args.FilePath, m.protectedDirs())
 	if err != nil {
 		return nil, err
 	}

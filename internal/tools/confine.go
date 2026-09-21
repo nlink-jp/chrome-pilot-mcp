@@ -42,7 +42,7 @@ import (
 // that named it. The write itself then goes through an os.Root opened on
 // work_dir (writeUnder), which refuses such a link again if one appears in
 // between.
-func outputUnder(wsRoot, filePath string) (string, error) {
+func outputUnder(wsRoot, filePath string, protected []protectedDir) (string, error) {
 	raw := filepath.Clean(filePath)
 	if !filepath.IsAbs(raw) {
 		raw = filepath.Join(wsRoot, raw)
@@ -55,7 +55,7 @@ func outputUnder(wsRoot, filePath string) (string, error) {
 				"pass a path relative to it, or leave filePath out", filePath, wsRoot).
 			WithDetails(map[string]any{"reason": "outside_work_dir", "filePath": filePath, "work_dir": wsRoot})
 	}
-	if reason, why := refusedLocation(raw, real); reason != "" {
+	if reason, why := refusedLocation(protected, raw, real); reason != "" {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
 			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
 	}
@@ -71,7 +71,7 @@ func outputUnder(wsRoot, filePath string) (string, error) {
 // What this cannot close: Chrome is given a path and opens the file later, so
 // a file swapped for a link after this check is read as the link's target.
 // DOM.setFileInputFiles takes paths, not open files.
-func inputUnder(wsRoot, filePath string) (string, error) {
+func inputUnder(wsRoot, filePath string, protected []protectedDir) (string, error) {
 	raw := filePath
 	if !filepath.IsAbs(raw) {
 		raw = filepath.Join(wsRoot, raw)
@@ -81,7 +81,7 @@ func inputUnder(wsRoot, filePath string) (string, error) {
 	if err != nil {
 		return "", toolerr.Newf(toolerr.CodeInvalidArguments, "filePath: %v", err)
 	}
-	if reason, why := refusedLocation(raw, real); reason != "" {
+	if reason, why := refusedLocation(protected, raw, real); reason != "" {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
 			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
 	}
@@ -102,23 +102,29 @@ func inputUnder(wsRoot, filePath string) (string, error) {
 	return real, nil
 }
 
+// protectedDir is a directory no file argument and no write may reach, with
+// the details.reason and sentence a refusal gives.
+type protectedDir struct {
+	path, reason, why string
+}
+
 // refusedLocation reports why a file under work_dir is still refused — its
 // details.reason and a sentence — or two empty strings. paths are the forms
-// of one path (as given and resolved), each compared with each form of every
-// entry, for the reason workdir.Sensitive documents.
-func refusedLocation(paths ...string) (reason, why string) {
+// of one path (as given and resolved). The credential blacklist is compared
+// by name (workdir.Sensitive, shared by the fleet); the protected
+// directories by identity.
+func refusedLocation(protected []protectedDir, paths ...string) (reason, why string) {
 	if why := workdir.Sensitive(paths...); why != "" {
 		return "sensitive_path", why
 	}
-	for _, d := range serverOwnedDirs() {
-		own, err := os.Stat(d)
+	for _, d := range protected {
+		own, err := os.Stat(d.path)
 		if err != nil {
-			continue // not there: nothing of this server's to reach
+			continue // not there: nothing to reach
 		}
 		for _, p := range paths {
 			if insideByIdentity(p, own) {
-				return "server_dir", "it is inside this server's own directory " + d +
-					" (config.toml and the managed browser profiles)"
+				return d.reason, d.why
 			}
 		}
 	}
@@ -159,20 +165,39 @@ func insideByIdentity(p string, dir os.FileInfo) bool {
 //
 // A refusal comes back as a *toolerr.Error; anything else is an I/O failure
 // for the caller to report (writeFailure).
-func writeUnder(root *os.Root, rel string, write func(io.Writer) error) error {
+func writeUnder(root *os.Root, rel string, protected []protectedDir, write func(io.Writer) error) error {
 	dir := filepath.Dir(rel)
+	refuse := func(reason, why string) error {
+		return toolerr.Newf(toolerr.CodePathNotAllowed, "%s is refused: %s", rel, why).
+			WithDetails(map[string]any{"reason": reason, "path": rel})
+	}
+	// Before anything is created: where the directory would be, links and all,
+	// so not even an empty directory appears in a protected place.
+	if reason, why := refusedLocation(protected, resolveExisting(filepath.Join(root.Name(), dir))); reason != "" {
+		return refuse(reason, why)
+	}
 	if dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create output dir: %w", err)
 		}
 	}
-	if real, err := filepath.EvalSymlinks(filepath.Join(root.Name(), dir)); err == nil {
-		if reason, why := refusedLocation(real); reason != "" {
-			return toolerr.Newf(toolerr.CodePathNotAllowed, "%s is refused: %s", rel, why).
-				WithDetails(map[string]any{"reason": reason, "path": rel})
-		}
+	// And after: the directory the root actually reaches must be the one the
+	// path names, and that one must not be protected. A work_dir moved while
+	// a recording was running fails the first test; nothing unresolvable
+	// passes.
+	real, err := filepath.EvalSymlinks(filepath.Join(root.Name(), dir))
+	if err != nil {
+		return refuse("outside_work_dir", "the output directory cannot be resolved: "+err.Error())
 	}
-	tmp, f, err := createExclusive(root, dir, filepath.Base(rel))
+	viaRoot, rerr := root.Stat(dir)
+	viaPath, perr := os.Stat(real)
+	if rerr != nil || perr != nil || !os.SameFile(viaRoot, viaPath) {
+		return refuse("outside_work_dir", "the work directory is no longer where it was when the call began")
+	}
+	if reason, why := refusedLocation(protected, real); reason != "" {
+		return refuse(reason, why)
+	}
+	tmp, f, err := createExclusive(root, dir)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", rel, err)
 	}
@@ -189,22 +214,23 @@ func writeUnder(root *os.Root, rel string, write func(io.Writer) error) error {
 	return nil
 }
 
-// createExclusive creates a new file beside name under a random temporary
-// name, failing rather than opening anything already there.
-func createExclusive(root *os.Root, dir, name string) (string, *os.File, error) {
+// createExclusive creates a new file in dir under a random temporary name,
+// failing rather than opening anything already there. The name does not grow
+// with the final one, so a long file name still has room.
+func createExclusive(root *os.Root, dir string) (string, *os.File, error) {
 	for range 4 {
 		var b [8]byte
 		if _, err := rand.Read(b[:]); err != nil {
 			return "", nil, err
 		}
-		tmp := filepath.Join(dir, "."+name+"."+hex.EncodeToString(b[:])+".partial")
+		tmp := filepath.Join(dir, ".cp-"+hex.EncodeToString(b[:])+".partial")
 		f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if errors.Is(err, fs.ErrExist) {
 			continue
 		}
 		return tmp, f, err
 	}
-	return "", nil, fmt.Errorf("no free temporary name beside %s", name)
+	return "", nil, fmt.Errorf("no free temporary name in %s", dir)
 }
 
 // writeFailure turns a writeUnder error into the tool's error: a refusal as it

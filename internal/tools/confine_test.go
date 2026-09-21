@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/browser"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 )
 
@@ -119,9 +120,11 @@ func TestScreencastStopRefusesALinkThatAppearedAfterStart(t *testing.T) {
 	wantEmpty(t, elsewhere)
 }
 
-// work_dir itself swapped for a link during the recording: the root was
-// opened at start, so the GIF lands in the directory that start checked.
-func TestScreencastWritesIntoTheWorkDirStartChecked(t *testing.T) {
+// work_dir itself swapped for a link during the recording: the directory the
+// root holds is no longer the one the path names, and the write is refused —
+// nothing lands at the link's target, and nothing is written into the moved
+// directory behind the caller's back (the third review).
+func TestScreencastRefusesAWorkDirSwappedDuringTheRecording(t *testing.T) {
 	work := resolvedTempDir(t)
 	elsewhere := resolvedTempDir(t)
 	f := newFakeChrome(t, "about:blank")
@@ -137,13 +140,10 @@ func TestScreencastWritesIntoTheWorkDirStartChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	feedOneFrame(t, m, f)
-	if _, err := callTool(t, m.screencastStop, `{}`); err != nil {
-		t.Fatalf("screencast_stop: %v", err)
-	}
+	_, err := callTool(t, m.screencastStop, `{}`)
+	wantPathRefused(t, err, "outside_work_dir")
 	wantEmpty(t, elsewhere)
-	if _, err := os.Stat(filepath.Join(moved, "cast.gif")); err != nil {
-		t.Errorf("the GIF is not in the directory start checked: %v", err)
-	}
+	wantEmpty(t, moved)
 }
 
 // A hard link in work_dir to a file outside it is replaced, not written
@@ -312,5 +312,120 @@ func TestAPlantedTemporaryNameIsNotWrittenThrough(t *testing.T) {
 	recordOneFrame(t, m, f, `{"filePath":"hl.gif","work_dir":`+quote(work)+`}`)
 	if b, _ := os.ReadFile(outside); string(b) != "original" {
 		t.Errorf("the file outside work_dir was overwritten through a temporary name: %q", b)
+	}
+}
+
+// The profile of the Chrome being driven is protected wherever it is. A
+// throwaway profile lives under the temp directory, which is a legitimate
+// work_dir, and its name can be read from chrome://version (the third review
+// uploaded its Cookies that way).
+func TestTheDrivenBrowsersProfileIsProtected(t *testing.T) {
+	temp := resolvedTempDir(t)
+	profile := filepath.Join(temp, "chrome-pilot-mcp-profile-123")
+	mustWrite(t, filepath.Join(profile, "Default", "Cookies"), "session")
+
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	snapshotFirst(t, m)
+	m.mu.Lock()
+	m.profileDir = profile
+	m.mu.Unlock()
+
+	_, err := callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"chrome-pilot-mcp-profile-123/Default/Cookies","work_dir":`+quote(temp)+`}`)
+	wantPathRefused(t, err, "server_dir")
+	_, err = callTool(t, m.uploadFile, `{"uid":"1_3","filePath":"Default/Cookies","work_dir":`+quote(profile)+`}`)
+	var te *toolerr.Error
+	if !errors.As(err, &te) || te.Code != toolerr.CodeWorkDirDenied {
+		t.Errorf("work_dir inside the driven profile: want %s, got %v", toolerr.CodeWorkDirDenied, err)
+	}
+}
+
+// The user's own Chrome profile is protected too: a work_dir of
+// ~/Library/Application Support would otherwise reach its cookies.
+func TestTheUsersOwnChromeProfileIsProtected(t *testing.T) {
+	serverDir(t) // HOME is a directory this test owns
+	roots := browser.RealChromeProfileRoots()
+	if len(roots) == 0 {
+		t.Skip("no real Chrome profile location on this platform")
+	}
+	chrome := roots[0]
+	mustWrite(t, filepath.Join(chrome, "Default", "Cookies"), "session")
+	parent := filepath.Dir(chrome)
+	rel, err := filepath.Rel(parent, filepath.Join(chrome, "Default", "Cookies"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	snapshotFirst(t, m)
+	_, err = callTool(t, m.uploadFile, `{"uid":"1_3","filePath":`+quote(rel)+`,"work_dir":`+quote(parent)+`}`)
+	wantPathRefused(t, err, "browser_profile")
+}
+
+// A work_dir inside the server's own directory under another spelling is
+// refused as a work_dir, before anything is written — resolveWorkDir's own
+// list compares names; the identity check behind it does not.
+func TestAWorkDirInsideTheServerOwnDirectoryIsDeniedUnderAnySpelling(t *testing.T) {
+	own := serverDir(t)
+	if !caseInsensitive(t, filepath.Dir(own)) {
+		t.Skip("case-sensitive filesystem: another spelling is another directory")
+	}
+	profile := filepath.Join(own, "profiles", "p", "Default")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shouted := filepath.Join(filepath.Dir(own), strings.ToUpper(filepath.Base(own)), "profiles", "p", "Default")
+	f := newFakeChrome(t, "https://example.com/")
+	m := newTestManager(t, Config{}, f)
+	_, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(shouted)+`}`)
+	var te *toolerr.Error
+	if !errors.As(err, &te) || te.Code != toolerr.CodeWorkDirDenied {
+		t.Fatalf("want %s, got %v", toolerr.CodeWorkDirDenied, err)
+	}
+	wantEmpty(t, profile)
+}
+
+// A directory swapped for a link into a protected place while recording is
+// refused before anything is created there, not even an empty directory.
+func TestNothingIsCreatedInAProtectedPlaceBeforeTheRefusal(t *testing.T) {
+	own := serverDir(t)
+	parent := filepath.Dir(own)
+	profile := filepath.Join(own, "profiles", "p", "Default")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(parent, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	if _, err := callTool(t, m.screencastStart, `{"filePath":"sub/new/x.gif","work_dir":`+quote(parent)+`}`); err != nil {
+		t.Fatalf("screencast_start: %v", err)
+	}
+	if err := os.Remove(filepath.Join(parent, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(parent, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(rel, filepath.Join(parent, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	feedOneFrame(t, m, f)
+	_, err = callTool(t, m.screencastStop, `{}`)
+	wantPathRefused(t, err, "server_dir")
+	wantEmpty(t, profile)
+}
+
+// A long file name still fits: the temporary name does not grow with it.
+func TestALongFileNameStillFits(t *testing.T) {
+	work := resolvedTempDir(t)
+	name := strings.Repeat("n", 240) + ".gif"
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	out := recordOneFrame(t, m, f, `{"filePath":`+quote(name)+`,"work_dir":`+quote(work)+`}`)
+	if path, _ := out["path"].(string); path != filepath.Join(work, name) {
+		t.Errorf("path = %q", path)
 	}
 }

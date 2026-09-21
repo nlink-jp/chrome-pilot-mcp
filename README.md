@@ -88,7 +88,8 @@ Notable behaviors:
   (relative to it, or absolute inside it) — a page can send what it is given
   anywhere, so copy the file into your work directory first. A path outside,
   a symlink leading out, a credential or agent-control file (`~/.ssh`, `.env`
-  and the like), anything in this server's own directory, and a directory are
+  and the like), anything in this server's own directory, in the profile of the
+  Chrome it is driving or in your own Chrome profile, and a directory are
   refused before Chrome is asked for anything. The page is given the file's
   real path — for a symlink, its target, whose name the page sees — and the
   result's `uploaded` reports that path.
@@ -179,8 +180,9 @@ allow_hosts = ["example.com", "*.example.com"]
 ## Browser profiles
 
 By default each run gets a throwaway profile that is deleted on shutdown.
-`--profile <name>` keeps one under
-`~/.config/chrome-pilot-mcp/profiles/<name>` (mode 0700) so logins survive
+`--profile <name>` keeps one under `profiles/<name>` in this server's own
+directory (`~/Library/Application Support/chrome-pilot-mcp` on macOS,
+`~/.config/chrome-pilot-mcp` on Linux; mode 0700) so logins survive
 across runs; `--user-data-dir <path>` uses a directory you name. Both are
 refused together with `--attach`, and pointing `--user-data-dir` at your
 real Chrome profile is refused outright — use `--attach` to drive a

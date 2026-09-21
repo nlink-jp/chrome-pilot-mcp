@@ -63,11 +63,15 @@ type Manager struct {
 	// Chrome and dials its WebSocket endpoint.
 	connect func(ctx context.Context) (*cdp.Client, *browser.Browser, error)
 
-	mu       sync.Mutex
-	client   *cdp.Client
-	br       *browser.Browser
-	pages    []*pageState
-	selected string // targetID; "" → none
+	mu     sync.Mutex
+	client *cdp.Client
+	br     *browser.Browser
+	// profileDir is the launched Chrome's profile directory, kept from the
+	// moment of connecting so protectedDirs can name it (ADR-0006); "" when
+	// attached.
+	profileDir string
+	pages      []*pageState
+	selected   string // targetID; "" → none
 
 	// pageEnabled tracks sessions where Page/etc. domains are enabled.
 	pageEnabled map[string]bool
@@ -175,6 +179,7 @@ func (m *Manager) ensure(ctx context.Context) error {
 	client.OnEvent(m.dispatchEvent)
 	m.client = client
 	m.br = br
+	m.profileDir = br.UserDataDir()
 	return nil
 }
 
@@ -184,6 +189,8 @@ func (m *Manager) Shutdown() {
 	m.mu.Lock()
 	client, br := m.client, m.br
 	m.client, m.br = nil, nil
+	// profileDir is kept: a throwaway profile is removed only after Chrome
+	// exits, and until then it is still this server's to protect.
 	m.mu.Unlock()
 	if client == nil {
 		return
@@ -401,6 +408,44 @@ func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
 // denied list.
 func resolveWorkDir(ctx context.Context, arg string) (string, error) {
 	return workDirResolver().Resolve(ctx, arg)
+}
+
+// workDir is resolveWorkDir plus the identity check: a work_dir inside a
+// protected directory (protectedDirs) is refused with work_dir_denied, whatever
+// spelling reached it — resolveWorkDir's own list compares names, and this
+// disk folds case. Every tool that takes work_dir calls this.
+func (m *Manager) workDir(ctx context.Context, arg string) (string, error) {
+	dir, err := resolveWorkDir(ctx, arg)
+	if err != nil {
+		return "", err
+	}
+	if _, why := refusedLocation(m.protectedDirs(), dir); why != "" {
+		return "", toolerr.Newf(toolerr.CodeWorkDirDenied, "work_dir %q is refused: %s", dir, why).
+			WithDetails(map[string]any{"work_dir": dir})
+	}
+	return dir, nil
+}
+
+// protectedDirs are the directories no file argument and no write may reach
+// (ADR-0006): this server's own directory, the profile of the Chrome it is
+// driving — a throwaway one lives under the temp directory, which is a
+// legitimate work_dir — and the user's own Chrome profiles.
+func (m *Manager) protectedDirs() []protectedDir {
+	var out []protectedDir
+	for _, d := range serverOwnedDirs() {
+		out = append(out, protectedDir{d, "server_dir",
+			"it is inside this server's own directory " + d + " (config.toml and the managed browser profiles)"})
+	}
+	m.mu.Lock()
+	profile := m.profileDir
+	m.mu.Unlock()
+	if d := profile; d != "" {
+		out = append(out, protectedDir{d, "server_dir", "it is inside the profile of the browser this server is driving, " + d})
+	}
+	for _, d := range browser.RealChromeProfileRoots() {
+		out = append(out, protectedDir{d, "browser_profile", "it is inside your own Chrome profile, " + d})
+	}
+	return out
 }
 
 // workDirResolver builds the resolver, denying this server's own directory.

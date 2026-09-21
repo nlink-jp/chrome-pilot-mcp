@@ -104,13 +104,13 @@ func (m *Manager) screencastStart(ctx context.Context, raw json.RawMessage) (any
 	// Validated here rather than at stop: the call that supplies a bad
 	// argument is the one that must be told, and a recording that only
 	// fails when it ends has already thrown away its frames.
-	wsRoot, err := resolveWorkDir(ctx, args.WorkDir)
+	wsRoot, err := m.workDir(ctx, args.WorkDir)
 	if err != nil {
 		return nil, err
 	}
 	outRel := ""
 	if args.FilePath != "" {
-		if outRel, err = outputUnder(wsRoot, args.FilePath); err != nil {
+		if outRel, err = outputUnder(wsRoot, args.FilePath, m.protectedDirs()); err != nil {
 			return nil, err
 		}
 	}
@@ -263,7 +263,7 @@ func (m *Manager) screencastStop(ctx context.Context, raw json.RawMessage) (any,
 	// Written through the root opened at start: start checked the path, and
 	// the root refuses a symlink that would carry the write out of work_dir if
 	// one has appeared since (ADR-0006).
-	if err := writeUnder(root, outRel, func(w io.Writer) error { return gif.EncodeAll(w, g) }); err != nil {
+	if err := writeUnder(root, outRel, m.protectedDirs(), func(w io.Writer) error { return gif.EncodeAll(w, g) }); err != nil {
 		return nil, writeFailure(err, filePath)
 	}
 

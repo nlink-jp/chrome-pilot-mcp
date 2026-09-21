@@ -104,8 +104,12 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir`).
   Compare places by identity (`insideByIdentity`, `os.SameFile`), never by
   name: this disk is case-insensitive, and two reviews in a row got past a
-  name comparison. Temporary files get a random name and `O_EXCL`
-  (`createExclusive`).
+  name comparison. Temporary files get a random fixed-length name and
+  `O_EXCL` (`createExclusive`). The protected directories are one list,
+  `Manager.protectedDirs` (server dir, the driven Chrome's profile kept in
+  `profileDir` at connect, the user's own Chrome roots); tools call
+  `Manager.workDir`, not `resolveWorkDir`, so a `work_dir` inside one is denied
+  by identity too.
   `workdir.Sensitive` resolves symlinks itself, so passing it the given path
   alone would still catch a link into `~/.ssh`; pass both forms anyway.
 - The initialize `instructions` string is `tools.Instructions`

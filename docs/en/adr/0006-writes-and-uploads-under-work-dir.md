@@ -49,21 +49,28 @@ superseded it the same day.
    checked first, on both spellings of the path (ADR-021 §7), so a link from
    `work_dir` into `~/.ssh` is refused as a credential file rather than merely as
    an outside one.
-3. **Inside `work_dir`, two kinds of place stay refused in both directions**:
-   the credential blacklist, and this server's own directory (`config.toml` and
-   the managed browser profiles). A `work_dir` may legitimately be a parent of
-   either — `~/.config`, `~/Library/Application Support` — and the files under it
-   would then be a live profile's cookies. The server's directory is compared by
-   **file identity**, not by name: APFS is case-insensitive by default, and a
-   string comparison let `CHROME-PILOT-MCP/profiles/…/Cookies` through (second
-   review).
+3. **Inside `work_dir`, some places stay refused in both directions**: the
+   credential blacklist (`sensitive_path`), and the protected directories —
+   this server's own directory (`config.toml` and the managed profiles) and the
+   profile of the Chrome it is driving (`server_dir`), which for a throwaway
+   profile lives under the temp directory, and the user's own Chrome profiles
+   (`browser_profile`). A `work_dir` may legitimately be a parent of any of
+   them — the temp directory, `~/.config`, `~/Library/Application Support` —
+   and the files under it would then be a live profile's cookies. A `work_dir`
+   inside one is refused with `work_dir_denied`. The protected directories are
+   compared by **file identity**, not by name: APFS is case-insensitive by
+   default, and a string comparison let `CHROME-PILOT-MCP/profiles/…/Cookies`
+   through (second review); the third found the throwaway profile unprotected.
 4. **Every file this server writes goes through `writeUnder`**: an `os.Root`, so
-   a link out of `work_dir` is refused; a check, by identity, of the directory
-   the file lands in, so a `screenshots/` or `screencasts/` linked into the
-   server's own directory is refused too — every write, not only a caller-named
-   one; and a temporary name nobody can guess, created exclusively and renamed
-   into place, so an existing entry (a hard link to a file outside `work_dir`
-   among them) is replaced rather than written through, and nothing planted at a
+   a link out of `work_dir` is refused; a check of where the directory would be,
+   links followed, before anything is created, and again once it exists — that
+   the root reaches the directory the path names, and that it is not protected —
+   so a `screenshots/` or `screencasts/` linked into a protected place is refused
+   without so much as an empty directory appearing there, and a `work_dir` moved
+   during a recording is refused rather than written into; and a temporary name
+   nobody can guess, of fixed length, created exclusively and renamed into
+   place, so an existing entry (a hard link to a file outside `work_dir` among
+   them) is replaced rather than written through, and nothing planted at a
    predictable temporary name is written through either.
 5. **A refusal is `path_not_allowed`**, and `details.reason` says which rule:
    `outside_work_dir`, `sensitive_path` or `server_dir`. A missing file or a
@@ -94,11 +101,10 @@ superseded it the same day.
   to a file outside `work_dir` is not detected (ADR-021 does not ask for it). The
   blacklist comparison is case-sensitive, so on a case-insensitive filesystem
   `.ENV` or `~/.SSH` passes it; that is in `internal/workdir`, shared by the
-  fleet, and is fixed there rather than here. The same package validates
-  `work_dir` itself by name, so a case variant of this server's directory is
-  accepted as a `work_dir` — every write and upload under it is then refused by
-  the identity check above. A recording abandoned without `screencast_stop`
-  keeps its frames and one open directory handle until the process exits.
+  fleet, and is fixed there rather than here. A recording abandoned without
+  `screencast_stop` keeps its frames and one open directory handle until the
+  process exits. An attached browser's profile is not known to this server and
+  is not protected beyond the user's own Chrome locations.
 
 ## References
 

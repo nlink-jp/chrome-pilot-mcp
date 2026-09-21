@@ -72,6 +72,10 @@ func resolveProfile(profile, userDataDir string) (dir string, persistent bool, e
 
 // realChromeProfileRoots lists the well-known user-data-dir locations of
 // the user's own Chrome/Chromium installs.
+// RealChromeProfileRoots lists this machine's real Chrome and Chromium
+// profile roots — the user's own browsers, with their cookies and saved logins.
+func RealChromeProfileRoots() []string { return realChromeProfileRoots(runtime.GOOS, os.Getenv) }
+
 func realChromeProfileRoots(goos string, getenv func(string) string) []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
