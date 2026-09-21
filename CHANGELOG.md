@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.8.0] - 2026-09-22
+
+### Security
+
+- **Files stay under `work_dir`, in both directions** (ADR-0006, organization
+  ADR-021 §7). `screencast_start`'s `filePath` was checked only for a `.gif`
+  suffix: it could name any path the process could write, creating directories
+  and overwriting files. `upload_file` handed Chrome any readable file,
+  directories included, without consulting the credential blacklist — and a
+  page can send what it is given anywhere. Tests pinned both behaviours.
+- **Protected places inside `work_dir` are refused too**: the credential
+  blacklist, this server's own directory (`config.toml` and the managed
+  profiles), the profile of the Chrome it drives, every throwaway
+  `chrome-pilot-mcp-profile-*` in the temp directory, and your own Chrome
+  profiles. A `work_dir` may be a parent of any of them; the files below would
+  then be live cookies. They are compared by file identity, not by name — the
+  disk is case-insensitive, and a name comparison let
+  `CHROME-PILOT-MCP/profiles/…/Cookies` through during review.
+- **Every write goes through one path**: an `os.Root` on `work_dir` (a link out
+  of it is refused), a check of where the directory would be before anything is
+  created and again after, and a random, exclusively created temporary file
+  renamed into place — so a hard link in `work_dir` to a file outside is
+  replaced, not written through. `take_screenshot` included.
+
+### Changed
+
+- **Breaking: `upload_file` takes a required `work_dir`** and hands the page
+  only a file under it (relative to it, or absolute inside it). Copy a file into
+  your work directory first. A runtime that sets `_meta["jp.nlink/work_dir"]`
+  needs no change.
+- **Breaking: a screencast `filePath` must lie under `work_dir`** — relative to
+  it (it used to be relative to the server's own working directory) or absolute
+  inside it. Anything else is refused at `screencast_start`, before recording.
+- A refusal is `path_not_allowed` with `details.reason`: `outside_work_dir`,
+  `sensitive_path`, `server_dir` or `browser_profile`. A `work_dir` inside a
+  protected place is `work_dir_denied`, whatever the spelling.
+- `upload_file` reports the file's real path in `uploaded` — the path Chrome
+  was given; for a symlink, the page sees the target's name.
+- A `work_dir` swapped or moved while a recording runs is refused at stop
+  rather than followed. A `screencasts/` or `screenshots/` that is an absolute
+  symlink fails (`os.Root` refuses absolute links); a relative one inside
+  `work_dir` works. Written files are mode `0644`.
+- Building from source needs Go 1.25 (`os.Root.MkdirAll`).
+
 ## [0.7.0] - 2026-09-22
 
 ### Added
