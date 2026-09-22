@@ -480,6 +480,10 @@ func (m *Manager) handleDialog(ctx context.Context, raw json.RawMessage) (any, e
 	// blocked while a dialog is open on some targets. Use the cached session.
 	m.mu.Lock()
 	p := m.pageByTargetLocked(m.selected)
+	var shown pageState
+	if p != nil {
+		shown = *p
+	}
 	m.mu.Unlock()
 	if p == nil || p.sessionID == "" {
 		return nil, toolerr.New(toolerr.CodeDialogNotOpen, "no attached page")
@@ -504,7 +508,15 @@ func (m *Manager) handleDialog(ctx context.Context, raw json.RawMessage) (any, e
 	m.col.mu.Lock()
 	delete(m.col.dialogs, p.sessionID)
 	m.col.mu.Unlock()
-	return map[string]any{"handled": args.Action, "dialogType": dlg.Type, "message": dlg.Message}, nil
+	out := map[string]any{"handled": args.Action, "dialogType": dlg.Type, "message": dlg.Message}
+	// Handled either way, so the page is not left blocked; but a page showing
+	// a local file no grant covers does not get its words out (ADR-0008).
+	// p.url is the last reported one: a refresh may block behind the dialog.
+	if m.refuseUngrantedLocal(&shown) != nil {
+		out["message"] = ""
+		out["note"] = "the message is withheld: the page shows a local file no call opened under its work_dir"
+	}
+	return out, nil
 }
 
 // ---- key dispatch ----

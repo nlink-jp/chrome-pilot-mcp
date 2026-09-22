@@ -87,6 +87,17 @@ Notable behaviors:
   `%AppData%\chrome-pilot-mcp` on Windows), a browser profile this server or
   another instance of it is using, or your own Chrome profile is refused with
   `work_dir_denied`, subdirectories included and whatever the spelling.
+- A local file (`file://`, also inside `view-source:`) opens only under
+  `work_dir`: `navigate_page` and `new_page` take `work_dir` for a local file
+  (the argument, else the runtime's `_meta` hint; there is no default), and a
+  credential or agent-control location under it is refused too. The page may
+  then load local files — its CSS and images, frames, a script's navigation —
+  only from under that `work_dir`; anything else is blocked inside Chrome. A
+  tab showing any other local file (one a script opened with `window.open`, or
+  one you opened) can only be navigated away with `navigate_page`, and the
+  console messages, network requests and dialog text of such a page are not
+  returned. A grant covers everything under `work_dir`, so name the narrowest
+  directory.
 - Nothing is written outside `work_dir`: a `filePath` given to
   `screencast_start` is relative to it, or absolute inside it, and anything
   else is refused with `path_not_allowed` before recording starts.
@@ -172,7 +183,7 @@ Flags:
 | `--user-data-dir <path>` | Explicit user-data-dir (exclusive with `--profile`) |
 | `--allow-hosts <list>` | Comma-separated host allow list; setting any switches to default-deny |
 | `--block-hosts <list>` | Comma-separated host block list; wins over the allow list |
-| `--block-local` | Refuse `file://` and `data:` URLs |
+| `--block-local` | Refuse every `file://` and `data:` URL (without it, `file://` opens only under the call's `work_dir`) |
 | `--config <path>` | Config file to read (see below) |
 
 Chrome is launched lazily on the first tool call, with the debugging port
@@ -232,7 +243,9 @@ with a `host_not_allowed` error, and a CDP interception fails every other
 request — in-page `fetch`, redirects, subresources — with
 `BlockedByClient`. Blocked requests still show up in
 `list_network_requests`, so a blocked load is visible rather than
-mysterious. With no lists configured the interception is never installed.
+mysterious. With no lists configured the interception covers local files
+only (`file://`, see above), so browsing the web pays nothing for it.
+`view-source:` is judged by the URL inside it.
 
 Known gaps (see [ADR-0001](docs/en/adr/0001-host-allow-block-lists.md)):
 WebSocket connections are not intercepted, and pages the tool never

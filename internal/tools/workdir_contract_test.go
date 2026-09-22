@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/mcpserver"
+	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/transport"
 )
 
@@ -48,6 +50,12 @@ func TestNoToolSchemaOrDescriptionCarriesARetiredWorkDirName(t *testing.T) {
 	}
 }
 
+// localFileWorkDirTools take work_dir only for a local file (ADR-0008): for a
+// file:// URL it is required — the argument, else _meta, else
+// work_dir_required, never a default (TestLocalFileWorkDirHasNoDefault) — and
+// for any other URL there is no file and nothing to resolve.
+var localFileWorkDirTools = map[string]bool{"navigate_page": true, "new_page": true}
+
 // An optional work directory is an invitation to fall back to a server-owned
 // default, which is the failure the contract removes.
 func TestWorkDirIsRequiredWhereverItIsDeclared(t *testing.T) {
@@ -59,7 +67,15 @@ func TestWorkDirIsRequiredWhereverItIsDeclared(t *testing.T) {
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
 			t.Fatalf("%s: input schema is not valid JSON: %v", tool.Name, err)
 		}
-		if _, declared := schema.Properties["work_dir"]; !declared {
+		prop, declared := schema.Properties["work_dir"]
+		if !declared {
+			continue
+		}
+		if localFileWorkDirTools[tool.Name] {
+			// Required for a local file only, and the schema has to say so.
+			if !strings.Contains(string(prop), "Needed only for a file:// URL") {
+				t.Errorf("tool %q takes work_dir for local files only but its schema does not say so", tool.Name)
+			}
 			continue
 		}
 		found := false
@@ -218,6 +234,25 @@ func TestInstructionsNameNoRetiredWorkDirName(t *testing.T) {
 	for _, old := range retiredWorkDirNames {
 		if strings.Contains(Instructions, old) {
 			t.Errorf("the initialize instructions name %q; the name is work_dir", old)
+		}
+	}
+}
+
+// The two tools that take work_dir for local files only never invent one: a
+// file:// URL with no work_dir and no _meta hint is work_dir_required, and no
+// tab is created or navigated for it.
+func TestLocalFileWorkDirHasNoDefault(t *testing.T) {
+	for name := range localFileWorkDirTools {
+		f := newFakeChrome(t, "about:blank")
+		m := newTestManager(t, Config{}, f)
+		fn := map[string]toolFunc{"navigate_page": m.navigatePage, "new_page": m.newPage}[name]
+		_, err := callTool(t, fn, `{"url":"file:///etc/hosts"}`)
+		var te *toolerr.Error
+		if !errors.As(err, &te) || te.Code != toolerr.CodeWorkDirRequired {
+			t.Errorf("%s with a file:// URL and no work_dir: %v, want %s", name, err, toolerr.CodeWorkDirRequired)
+		}
+		if f.callCount("Page.navigate") != 0 || f.callCount("Target.createTarget") != 0 {
+			t.Errorf("%s acted on a local file it had no work_dir for", name)
 		}
 	}
 }

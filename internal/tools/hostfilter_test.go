@@ -136,29 +136,31 @@ func TestNewPageBlockedAtToolLayer(t *testing.T) {
 	}
 }
 
-// TestFetchGuardInstalledOnlyWhenRestricted pins the zero-overhead
-// default: Fetch.enable is never called without a configured list.
-func TestFetchGuardInstalledOnlyWhenRestricted(t *testing.T) {
-	f := newFakeChrome(t, "about:blank")
-	m := newTestManager(t, Config{}, f)
-	if _, err := callTool(t, m.listPages, `{}`); err != nil {
-		t.Fatal(err)
-	}
-	// listPages does not attach; take a snapshot to force attach.
-	if _, err := callTool(t, m.takeSnapshot, `{}`); err != nil {
-		t.Fatal(err)
-	}
-	if n := f.callCount("Fetch.enable"); n != 0 {
-		t.Errorf("unrestricted config must not enable Fetch, got %d calls", n)
-	}
-
-	f2 := newFakeChrome(t, "about:blank")
-	m2 := newTestManager(t, Config{AllowHosts: []string{"example.com"}}, f2)
-	if _, err := callTool(t, m2.takeSnapshot, `{}`); err != nil {
-		t.Fatal(err)
-	}
-	if n := f2.callCount("Fetch.enable"); n != 1 {
-		t.Errorf("restricted config should enable Fetch once, got %d", n)
+// TestFetchGuardPatterns pins what is intercepted: with no host list only
+// file:// loads (ADR-0008) — no http request pauses, measured — and with one,
+// every request (ADR-0001).
+func TestFetchGuardPatterns(t *testing.T) {
+	for _, c := range []struct {
+		cfg  Config
+		want string
+	}{
+		{Config{}, "file://*"},
+		{Config{AllowHosts: []string{"example.com"}}, "*"},
+	} {
+		f := newFakeChrome(t, "about:blank")
+		m := newTestManager(t, c.cfg, f)
+		// listPages does not attach; take a snapshot to force attach.
+		if _, err := callTool(t, m.takeSnapshot, `{}`); err != nil {
+			t.Fatal(err)
+		}
+		calls := f.callsOf("Fetch.enable")
+		if len(calls) != 1 {
+			t.Fatalf("%+v: Fetch.enable calls = %d, want 1", c.cfg, len(calls))
+		}
+		patterns, _ := calls[0].params["patterns"].([]any)
+		if len(patterns) != 1 || patterns[0].(map[string]any)["urlPattern"] != c.want {
+			t.Errorf("%+v: Fetch patterns = %v, want [%s]", c.cfg, patterns, c.want)
+		}
 	}
 }
 

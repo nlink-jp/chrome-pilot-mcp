@@ -86,6 +86,14 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   このサーバーやほかのインスタンスが使っているブラウザプロファイル、あなた自身の Chrome の
   プロファイルを指定した呼び出しは、サブディレクトリを含め、綴りにかかわらず
   `work_dir_denied` で拒否します。
+- ローカルファイル（`file://`、`view-source:` の中のものも）は `work_dir` の下のものだけ開きます。
+  `navigate_page` と `new_page` はローカルファイルのときに `work_dir` を取り（引数、無ければランタイムの
+  `_meta`。既定はありません）、その下でも資格情報・エージェント制御の位置は拒否します。そのページが読み込める
+  ローカルファイル（CSS や画像、フレーム、スクリプトによる移動）も同じ `work_dir` の下のものだけで、それ以外は
+  Chrome の中で止めます。ほかのローカルファイルを表示しているタブ（スクリプトが `window.open` で開いたもの、
+  あなたが開いたもの）は `navigate_page` で離れることしかできず、そのページのコンソールメッセージ・ネットワーク
+  リクエスト・ダイアログの文言も返しません。許可は `work_dir` の下すべてに及ぶので、いちばん狭いディレクトリを
+  渡してください。
 - `work_dir` の外には何も書きません。`screencast_start` に渡す `filePath` は
   `work_dir` からの相対パスか、その中を指す絶対パスで、それ以外は録画を始める前に
   `path_not_allowed` で拒否します。
@@ -168,7 +176,7 @@ chrome-pilot-mcp             # stdio で MCP を serve (MCP クライアント�
 | `--user-data-dir <path>` | user-data-dir の明示指定 (`--profile` と排他) |
 | `--allow-hosts <list>` | ホスト許可リスト (カンマ区切り)。1 つでも指定すると default-deny |
 | `--block-hosts <list>` | ホスト拒否リスト (カンマ区切り)。allow より優先 |
-| `--block-local` | `file://` と `data:` を拒否 |
+| `--block-local` | `file://` と `data:` をすべて拒否（無指定なら、`file://` は呼び出しの `work_dir` の下のものだけ開く） |
 | `--config <path>` | 設定ファイル (下記) |
 
 Chrome は最初のツール呼び出し時に遅延起動されます。debugging ポートは
@@ -226,7 +234,8 @@ chrome-pilot-mcp --allow-hosts "example.com,*.example.com"
 リクエスト (ページ内 `fetch`、リダイレクト、サブリソース) を
 `BlockedByClient` で失敗させます。遮断されたリクエストは
 `list_network_requests` に残るので、原因不明の失敗になりません。リスト
-未設定時はインターセプト自体を有効化しません。
+未設定時のインターセプトはローカルファイル（`file://`、上記）だけが対象なので、
+Web の閲覧には負担がかかりません。`view-source:` はその中の URL で判定します。
 
 既知の限界 ([ADR-0001](docs/ja/adr/0001-host-allow-block-lists.ja.md)):
 WebSocket 接続はインターセプト対象外で、ツールが attach していない

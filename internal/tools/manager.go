@@ -72,10 +72,16 @@ type Manager struct {
 	br     *browser.Browser
 	// profileDir is the launched Chrome's profile directory, kept from the
 	// moment of connecting so protectedPlaces can name it (ADR-0006); "" when
-	// attached.
+	// attached. It has a lock of its own, placesMu, not m.mu: the Fetch
+	// interception judges local files through protectedPlaces while a tool
+	// call may hold m.mu waiting on the load it paused (ADR-0008).
+	placesMu   sync.Mutex
 	profileDir string
-	pages      []*pageState
-	selected   string // targetID; "" → none
+	// grants are the work directories each page session was allowed to open
+	// local files from (ADR-0008); their own lock, for the same reason.
+	grants   fileGrants
+	pages    []*pageState
+	selected string // targetID; "" → none
 
 	// pageEnabled tracks sessions where Page/etc. domains are enabled.
 	pageEnabled map[string]bool
@@ -183,7 +189,9 @@ func (m *Manager) ensure(ctx context.Context) error {
 	client.OnEvent(m.dispatchEvent)
 	m.client = client
 	m.br = br
+	m.placesMu.Lock()
 	m.profileDir = br.UserDataDir()
+	m.placesMu.Unlock()
 	return nil
 }
 
@@ -370,6 +378,13 @@ func (m *Manager) attachPageLocked(ctx context.Context, p *pageState) error {
 // selectedPage returns the selected page, attached and ready. It connects
 // the browser and refreshes the page list as needed.
 func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
+	return m.selectedPageFor(ctx, false)
+}
+
+// selectedPageFor is selectedPage for navigate_page too (navigating): a page
+// showing a local file no grant covers may be navigated away from, and used
+// for nothing else (ADR-0008).
+func (m *Manager) selectedPageFor(ctx context.Context, navigating bool) (*pageState, error) {
 	if err := m.ensure(ctx); err != nil {
 		return nil, err
 	}
@@ -381,6 +396,13 @@ func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
 	p := m.pageByTargetLocked(m.selected)
 	if p == nil {
 		return nil, toolerr.New(toolerr.CodePageNotFound, "no pages open; use new_page first")
+	}
+	// Before attaching: attaching turns the console and network collectors
+	// on, and a page showing a local file no grant covers must not feed them.
+	if !navigating {
+		if err := m.refuseUngrantedLocal(p); err != nil {
+			return nil, err
+		}
 	}
 	if err := m.attachPageLocked(ctx, p); err != nil {
 		return nil, err
@@ -442,9 +464,9 @@ func (m *Manager) protectedPlaces() []pathguard.Place {
 		out = append(out, place(d, "server_dir",
 			"it is inside this server's own directory "+d+" (config.toml and the managed browser profiles)"))
 	}
-	m.mu.Lock()
+	m.placesMu.Lock()
 	profile := m.profileDir
-	m.mu.Unlock()
+	m.placesMu.Unlock()
 	if d := profile; d != "" {
 		out = append(out, place(d, "server_dir", "it is inside the profile of the browser this server is driving, "+d))
 	}

@@ -48,12 +48,20 @@ func (m *Manager) newPage(ctx context.Context, raw json.RawMessage) (any, error)
 	var args struct {
 		URL     string `json:"url"`
 		Timeout int    `json:"timeout"`
+		WorkDir string `json:"work_dir"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
 	}
+	grant := ""
 	if args.URL != "" {
 		if err := m.filter.checkURL(args.URL); err != nil {
+			return nil, err
+		}
+		// A local file only inside the call's work_dir (ADR-0008); judged
+		// before a tab is created for it.
+		var err error
+		if grant, err = m.checkLocalURL(ctx, args.URL, args.WorkDir); err != nil {
 			return nil, err
 		}
 	}
@@ -89,6 +97,9 @@ func (m *Manager) newPage(ctx context.Context, raw json.RawMessage) (any, error)
 	m.mu.Unlock()
 
 	out := map[string]any{"index": m.indexOf(res.TargetID), "url": args.URL}
+	if grant != "" {
+		m.grants.grant(p.sessionID, grant)
+	}
 	if args.URL != "" {
 		note, err := m.navigateSession(ctx, p.sessionID, args.URL, timeoutFromMS(args.Timeout, defaultNavigateTimeout))
 		if err != nil {
@@ -165,6 +176,7 @@ func (m *Manager) closePage(ctx context.Context, raw json.RawMessage) (any, erro
 		return nil, err
 	}
 	delete(m.pageEnabled, m.pages[i].sessionID)
+	m.grants.drop(m.pages[i].sessionID)
 	if err := m.refreshPagesLocked(ctx); err != nil {
 		return nil, err
 	}
@@ -175,6 +187,7 @@ func (m *Manager) navigatePage(ctx context.Context, raw json.RawMessage) (any, e
 	var args struct {
 		URL     string `json:"url"`
 		Timeout int    `json:"timeout"`
+		WorkDir string `json:"work_dir"`
 	}
 	if err := decodeArgs(raw, &args); err != nil {
 		return nil, err
@@ -185,9 +198,18 @@ func (m *Manager) navigatePage(ctx context.Context, raw json.RawMessage) (any, e
 	if err := m.filter.checkURL(args.URL); err != nil {
 		return nil, err
 	}
-	p, err := m.selectedPage(ctx)
+	grant, err := m.checkLocalURL(ctx, args.URL, args.WorkDir)
 	if err != nil {
 		return nil, err
+	}
+	// navigating: the one tool that may move a page off a local file no
+	// grant covers (ADR-0008).
+	p, err := m.selectedPageFor(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	if grant != "" {
+		m.grants.grant(p.sessionID, grant)
 	}
 	note, err := m.navigateSession(ctx, p.sessionID, args.URL, timeoutFromMS(args.Timeout, defaultNavigateTimeout))
 	if err != nil {

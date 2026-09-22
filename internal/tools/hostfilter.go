@@ -61,6 +61,11 @@ func (f hostFilter) hostAllowed(host string) bool {
 // is left to the browser; ADR-0001 documents the WebSocket gap.
 func (f hostFilter) urlAllowed(rawURL string) (bool, string) {
 	trimmed := strings.TrimSpace(rawURL)
+	// view-source: shows what the URL inside it loads, so that URL is what
+	// is judged (ADR-0008).
+	for strings.HasPrefix(strings.ToLower(trimmed), "view-source:") {
+		trimmed = strings.TrimSpace(trimmed[len("view-source:"):])
+	}
 	lower := strings.ToLower(trimmed)
 
 	if strings.HasPrefix(lower, "data:") {

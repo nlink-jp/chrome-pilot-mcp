@@ -124,6 +124,26 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   runs. Tools call `Manager.workDir`, so a `work_dir` inside one is denied too.
   The after-creation check in `writeUnder` (the directory the root reached)
   guards a race no deterministic test can provoke.
+- Local files follow ADR-0008, and the rule lives in `internal/tools/localfiles.go`
+  (`judgeLocal`): a `file://` (or `view-source:file://`) opens only inside a
+  `work_dir` a call named and through pathguard's Local policy. Three places
+  apply it — `checkLocalURL` (the `navigate_page` / `new_page` arguments),
+  `fileRequestAllowed` (the Fetch interception, always on with `file://*` when
+  no host list is set; it sees JavaScript navigation, subresources, iframes and
+  view-source) and `refuseUngrantedLocal` (in `selectedPage`, **before**
+  attaching, and in the three tools that bypass `selectedPage`:
+  `get_network_request`, `get_console_message`, `handle_dialog`). A tab a
+  script opened with `window.open` loads before it is attached, which is why
+  the reads are refused at their entrance too. Grants are per session
+  (`m.grants`, dropped on `close_page`). **Nothing in that decision may take
+  `m.mu`**: tool calls hold `m.mu` across CDP calls, and one waiting on a
+  paused `file://` load deadlocks — `protectedPlaces` reads `profileDir` under
+  `placesMu`; `TestTheInterceptionDoesNotWaitOnTheManagerLock` guards it (and
+  the mutant that takes `m.mu` hangs the suite). A new tool that reads page
+  state without `selectedPage` must call `refuseUngrantedSession`.
+  `navigate_page` / `new_page` declare `work_dir` without requiring it — the
+  one exception in `workdir_contract_test.go`, pinned by
+  `TestLocalFileWorkDirHasNoDefault`.
 - The initialize `instructions` string is `tools.Instructions`
   (`internal/tools/instructions.go`), set on the server by `cmd/root.go`
   `serve` via `srv.SetInstructions`. It is the first thing a model reads, so

@@ -38,10 +38,11 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "new_page",
-		Description: "Opens a new page (tab), selects it, and optionally navigates it to a URL, waiting for the load event.",
+		Description: "Opens a new page (tab), selects it, and optionally navigates it to a URL, waiting for the load event. A local file (file://) opens only if it lies under work_dir.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"url":{"type":"string","description":"URL to navigate the new page to. Omit for a blank page."},
-			"timeout":{"type":"integer","description":"Navigation timeout in milliseconds. Default 15000."}
+			"timeout":{"type":"integer","description":"Navigation timeout in milliseconds. Default 15000."},
+			` + localWorkDirProp + `
 		}}`),
 	}, wrap(m.newPage))
 
@@ -63,10 +64,11 @@ func RegisterAll(s *mcpserver.Server, m *Manager) {
 
 	s.RegisterTool(mcpserver.Tool{
 		Name:        "navigate_page",
-		Description: "Navigates the selected page to a URL and waits for the load event.",
+		Description: "Navigates the selected page to a URL and waits for the load event. A local file (file://) opens only if it lies under work_dir.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"url":{"type":"string","description":"Destination URL."},
-			"timeout":{"type":"integer","description":"Navigation timeout in milliseconds. Default 15000."}
+			"timeout":{"type":"integer","description":"Navigation timeout in milliseconds. Default 15000."},
+			` + localWorkDirProp + `
 		},"required":["url"]}`),
 	}, wrap(m.navigatePage))
 
@@ -118,6 +120,10 @@ const includeSnapshotProp = `"includeSnapshot":{"type":"boolean","description":"
 // one: the server's own workspace is chosen at startup, and an agent whose
 // file access is confined elsewhere cannot open what lands there.
 const workDirProp = `"work_dir":{"type":"string","description":"Absolute path to a directory you can read back \u2014 your session or working directory. The file is written under it and comes back as a path, so a directory you cannot open leaves you holding a path to nothing. It must already exist; nothing here expands ~ or resolves a relative path."}`
+
+// localWorkDirProp is work_dir for navigate_page and new_page, needed only
+// for a local file (ADR-0008).
+const localWorkDirProp = `"work_dir":{"type":"string","description":"Needed only for a file:// URL (view-source:file:// included): absolute path to your session or working directory. A local file opens only if it lies under it and is not a credential or agent-control location, and the page may then load local files only from under it. It must already exist; nothing here expands ~ or resolves a relative path."}`
 
 // uploadWorkDirProp is work_dir for upload_file, which reads a file rather
 // than writing one (organization ADR-021 §7, project ADR-0006).

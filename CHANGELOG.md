@@ -1,5 +1,42 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+- **A `file://` URL read any file the process could read** (v0.9.0 and
+  earlier, without `--block-local`): `navigate_page` or `new_page` to
+  `file:///<home>/.ssh/id_rsa`, then `take_snapshot` or `evaluate_script`.
+  So did `view-source:file://`, a script in an opened local page navigating to
+  another local file, and a tab it opened with `window.open` (ADR-0008;
+  measured with headless Chrome before the fix).
+
+### Changed — behaviour change
+
+- **A local file opens only under the call's `work_dir`** (ADR-0008).
+  `navigate_page` and `new_page` take `work_dir` for a `file://` URL
+  (`view-source:file://` too) — the argument, else the runtime's `_meta` hint,
+  else `work_dir_required` — and refuse a file outside it, or a credential or
+  agent-control location under it, with `path_not_allowed`. A local file
+  anywhere else no longer opens.
+- A page may load local files — subresources, frames, a script's
+  navigation — only from under the `work_dir`s its session was opened with;
+  anything else fails inside Chrome (`BlockedByClient`). The CDP interception
+  is therefore always on: with no host list it covers `file://` only, which
+  pauses no http request (measured).
+- A tab showing a local file no call opened (a `window.open` tab, one the user
+  opened) can only be navigated away with `navigate_page`; other tools refuse
+  it with `path_not_allowed`, before attaching to it. `get_network_request` and
+  `get_console_message` refuse records from such a page, and the body of a
+  local-file load no call opened; `handle_dialog` still answers a dialog there
+  but withholds its text.
+- A URL containing control characters is refused (Chrome drops tabs and
+  newlines before parsing, so `fi\tle:///…` is a local file to it).
+- `view-source:` URLs are judged by the URL inside them, by the host lists
+  too.
+- ADR-0001's note that `file://` is enforced at the tool-argument layer only is
+  corrected: the interception does see local files.
+
 ## [0.9.0] - 2026-09-22
 
 ### Changed

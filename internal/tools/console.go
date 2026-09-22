@@ -71,6 +71,21 @@ func (m *Manager) getConsoleMessage(ctx context.Context, raw json.RawMessage) (a
 		return nil, toolerr.New(toolerr.CodeMissingArgument, "msgid is required")
 	}
 	m.col.mu.Lock()
+	var found *consoleMsg
+	for _, msg := range m.col.consoleMsgs {
+		if msg.ID == *args.MsgID {
+			found = msg
+			break
+		}
+	}
+	m.col.mu.Unlock()
+	if found != nil {
+		// Read by id, not through selectedPage (ADR-0008).
+		if err := m.refuseUngrantedSession(ctx, found.sessionID); err != nil {
+			return nil, err
+		}
+	}
+	m.col.mu.Lock()
 	defer m.col.mu.Unlock()
 	for _, msg := range m.col.consoleMsgs {
 		if msg.ID == *args.MsgID {

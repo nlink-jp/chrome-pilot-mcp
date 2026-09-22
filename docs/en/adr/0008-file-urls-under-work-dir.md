@@ -30,7 +30,8 @@ profile, a fake secret file in a scratch directory, an HTTP server on 127.0.0.1)
 
 **On the interception:** `Fetch` does see `file://` — ADR-0001's premise was wrong. The page itself, the CSS and
 images it loads, navigation by JavaScript, `view-source:` and iframes all reached `Fetch.requestPaused`. With the
-pattern `file://*`, no http request paused at all.
+pattern `file://*`, no http request paused at all, and `view-source:file://` paused under it as the `file://` request
+inside.
 
 ## Decision
 
@@ -46,9 +47,15 @@ pattern `file://*`, no http request paused at all.
   subresources, iframes and `view-source:` stop here.
 - The tool-argument layer judges `view-source:` by the URL inside it.
 - A page showing a local file no grant covers (a tab opened with `window.open`, a tab the user opened) may be used by
-  no tool but `navigate_page`. Every tool that uses a page goes through `selectedPage`, which checks the page's
-  current URL each time. Navigating away with `navigate_page` makes it usable again. In attach mode a user's tab is
-  not blanked behind their back.
+  no tool but `navigate_page`. The tools that use a page go through `selectedPage`, which checks the page's current
+  URL each time — **before** attaching it (attaching turns the console and network collectors on). Navigating away
+  with `navigate_page` makes it usable again. In attach mode a user's tab is not blanked behind their back.
+- The three tools that do not go through `selectedPage` follow the same rule. `get_network_request` and
+  `get_console_message`, which read collected records by id, refuse when the record's page shows a local file no
+  grant covers, and `get_network_request` also refuses an ungranted local-file load itself (its body is that file).
+  `handle_dialog` still answers the dialog (the page is not left blocked) but returns no words on such a page.
+- A URL with control characters is refused. Chrome drops leading and trailing controls and spaces, and tabs and
+  newlines anywhere, before it parses a URL, so `fi\tle:///…` is a local-file URL to it.
 - The interception's decision does not take `m.mu`: some paths call CDP while holding it, and a call waiting on a
   paused `file://` load would deadlock against it. `protectedPlaces` reads the driven profile's location under a lock
   of its own, and the resolver is built at the moment of use (as in ADR-0007).
@@ -72,7 +79,11 @@ pattern `file://*`, no http request paused at all.
 - `Fetch` is always on with `file://*`. It does not affect http browsing (measured).
 - Remaining limits: JavaScript in an HTML file inside a granted `work_dir` can send that file's own content out (the
   same egress limit as ADR-0001). The interception does not reach a tab not yet attached, but reads stop at their
-  entrance.
+  entrance. Workers a granted HTML file starts are not measured (the interception is installed on page sessions
+  only). `chrome:`, `devtools:`, `blob:` and `filesystem:` are left to the browser as before (none reads an
+  arbitrary path).
+- A grant covers everything under `work_dir`. A broad directory (`~/Documents`, say) opens all of it — name the
+  narrowest one.
 - ADR-0001's "`file://` / `data:` are enforced at the tool-argument layer only" is amended for `file://`.
 
 ## References

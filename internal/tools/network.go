@@ -89,6 +89,15 @@ func (m *Manager) getNetworkRequest(ctx context.Context, raw json.RawMessage) (a
 	if req == nil {
 		return nil, toolerr.Newf(toolerr.CodeInvalidArguments, "no network request with reqid %d (it may have been evicted)", *args.ReqID)
 	}
+	// Read by id, not through selectedPage, so the local-file rule is
+	// applied here (ADR-0008): not from a page showing an ungranted local
+	// file, and not the body of one.
+	if err := m.refuseUngrantedSession(ctx, req.sessionID); err != nil {
+		return nil, err
+	}
+	if err := m.refuseUngrantedLoad(req.sessionID, req.URL); err != nil {
+		return nil, err
+	}
 
 	out := map[string]any{
 		"reqid": req.ID, "url": req.URL, "method": req.Method,
