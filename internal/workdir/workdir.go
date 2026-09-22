@@ -43,24 +43,10 @@ const MetaKey = pgwd.MetaKey
 // directory has to be one the caller can read back.
 const requiredHint = "Results come back as paths, and a path you cannot open is worth nothing."
 
-// Resolver resolves and validates work directories. Only NewResolver builds a
-// working one; the zero Resolver refuses every call.
+// Resolver resolves and validates work directories. Only NewResolverFor
+// builds a working one; the zero Resolver refuses every call.
 type Resolver struct {
 	r pgwd.Resolver
-}
-
-// NewResolver builds the resolver. serverDirs are this server's own config
-// and state directories, which may never be a work directory; an empty one
-// refuses every call rather than protecting nothing.
-func NewResolver(serverDirs ...string) Resolver {
-	var protected []pathguard.Place
-	for _, d := range serverDirs {
-		protected = append(protected, pathguard.ServerDir(d, ""))
-	}
-	return Resolver{r: pgwd.NewResolver(pgwd.Options{
-		Protected:    protected,
-		RequiredHint: requiredHint,
-	})}
 }
 
 // Resolve returns the validated work directory for one call: the tool's

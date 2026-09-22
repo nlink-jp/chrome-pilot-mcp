@@ -41,7 +41,7 @@ func metaCtx(t *testing.T, value any) context.Context {
 
 func resolver(t *testing.T) Resolver {
 	t.Helper()
-	return NewResolver(t.TempDir())
+	return NewResolverFor(pathguard.ServerDir(t.TempDir(), ""))
 }
 
 // TestResolveArgumentWins: the argument is the caller's own statement of where
@@ -154,7 +154,7 @@ func TestValidateRefusesTheServersOwnDirectory(t *testing.T) {
 	if err := os.Mkdir(inside, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := NewResolver(own)
+	r := NewResolverFor(pathguard.ServerDir(own, ""))
 	for _, dir := range []string{own, inside, strings.ToUpper(inside)} {
 		_, err := r.Validate(dir)
 		if code(t, err) != toolerr.CodeWorkDirDenied {
@@ -180,7 +180,7 @@ func TestValidateRefusesTheServersOwnDirectory(t *testing.T) {
 // so does one given an empty server directory.
 func TestAResolverThatWasNotBuiltRefuses(t *testing.T) {
 	dir := t.TempDir()
-	for name, r := range map[string]Resolver{"zero": {}, "empty server dir": NewResolver("")} {
+	for name, r := range map[string]Resolver{"zero": {}, "empty server dir": NewResolverFor(pathguard.ServerDir("", ""))} {
 		if _, err := r.Validate(dir); code(t, err) != toolerr.CodeWorkDirDenied {
 			t.Errorf("%s: Validate = %v, want work_dir_denied", name, err)
 		}
@@ -214,7 +214,7 @@ func resolve(t *testing.T, dir string) string {
 // Every server directory given is protected, not only the first.
 func TestEveryServerDirectoryIsProtected(t *testing.T) {
 	a, b := resolve(t, t.TempDir()), resolve(t, t.TempDir())
-	r := NewResolver(a, b)
+	r := NewResolverFor(pathguard.ServerDir(a, ""), pathguard.ServerDir(b, ""))
 	for _, dir := range []string{a, b} {
 		if _, err := r.Validate(dir); code(t, err) != toolerr.CodeWorkDirDenied {
 			t.Errorf("Validate(%q) = %v, want work_dir_denied", dir, err)
