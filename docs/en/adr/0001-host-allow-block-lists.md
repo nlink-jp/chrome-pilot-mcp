@@ -1,6 +1,6 @@
 # ADR-0001: Navigation restriction via host allow/block lists
 
-- Status: Accepted
+- Status: Accepted (how `file://` is treated is amended by [ADR-0008](0008-file-urls-under-work-dir.md))
 - Date: 2026-07-29
 - Driver: magi
 - Generalises to: other nlink-jp browser/network tools
