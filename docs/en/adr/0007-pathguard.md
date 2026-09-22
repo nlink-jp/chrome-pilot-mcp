@@ -30,7 +30,9 @@ separates reads and writes (Local) from what leaves the machine (Outbound).
   user's own Chrome profiles — each with its reason (`server_dir`, `browser_profile`) and sentence.
   `Manager.resolver` builds a resolver from it at the moment of use: the places change while the
   server runs (a browser is launched, a throwaway profile appears), so nothing is cached.
-- `work_dir` and writes (`outputUnder`, `writeUnder`) are judged by the Local policy (`LocalPath`);
+- `work_dir` is judged by pathguard/workdir's list of what may not be a work directory (system
+  directories, the home directory itself, the credential and agent-control places, and this server's
+  places; `Resolve`); writes (`outputUnder`, `writeUnder`) by the Local policy (`LocalPath`);
   `upload_file` (`inputUnder`) by the Outbound policy (`OutboundPath`). A page can send what it is
   given anywhere, so an upload is treated as leaving the machine.
 - `refusedLocation`, `insideByIdentity` and `protectedDir` are dropped. `resolveExisting` (where a
@@ -41,12 +43,13 @@ separates reads and writes (Local) from what leaves the machine (Outbound).
 ## Consequences
 
 - **Refused now on upload**: a file named as a secret (`id_rsa`, `credentials.json`,
-  `*service-account*.json`, `.env`) or lying in a credential directory — wherever it sits, inside
-  `work_dir` and outside your home included.
+  `*service-account*.json`, `.env`) or whose path passes through a credential directory or file name
+  (`.ssh`, `.aws`, `.npmrc`, `.netrc`, `.git-credentials`, `.bash_history` and the like) — wherever it
+  sits, inside `work_dir` and outside your home included.
 - **Refused now for writes and `work_dir`**: the real places under your home from the runtimes'
   list, under every spelling, and wherever a link directly inside one of those directories points;
-  when `$HOME` names another directory than the account's home, both; everything when the home is
-  unknown.
+  when `$HOME` names another directory than the account's home, those places under both (this
+  server's own places follow `$HOME`, as they did before); everything when the home is unknown.
 - **Accepted now**: the `.env` templates (`.env.example` and the like).
 - `work_dir_denied` carries `reason` in its `details`.
 - The after-creation check in `writeUnder` (the directory the root actually reached) guards a race no

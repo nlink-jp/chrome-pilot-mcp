@@ -1,7 +1,7 @@
 // Package config loads chrome-pilot-mcp's config.toml.
 //
 // It contains a hand-written parser for the TOML subset a config file
-// needs — the zero-dependency policy (CLAUDE.md rule 1) rules out
+// needs — the no-third-party-dependency rule (CLAUDE.md rule 1) rules out
 // BurntSushi/toml. Unsupported syntax and unknown keys are rejected with
 // a line number rather than silently ignored, so a typo never turns into
 // a surprising default. See ADR-0002.

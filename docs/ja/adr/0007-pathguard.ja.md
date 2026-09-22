@@ -26,8 +26,10 @@ ADR-0005 で `work_dir` の検証を、ADR-0006 で書き込みとアップロ�
   それぞれの reason（`server_dir`・`browser_profile`）と文を持つ。`Manager.resolver` が使う時点でそこから検査器を
   作る —— 場所はサーバーが動いている間に変わる（ブラウザを起動する、一時プロファイルが現れる）ので、キャッシュ
   しない。
-- `work_dir` と書き込み（`outputUnder`・`writeUnder`）は Local の方針（`LocalPath`）で、`upload_file`（`inputUnder`）は
-  Outbound の方針（`OutboundPath`）で判定する。ページは渡されたファイルをどこへでも送れるので、アップロードは
+- `work_dir` は pathguard/workdir の「作業ディレクトリにしてはならない場所」の一覧（システムのディレクトリ、ホーム
+  ディレクトリそのもの、資格情報・エージェント制御の場所、このサーバーの場所。`Resolve`）で、書き込み（`outputUnder`・
+  `writeUnder`）は Local の方針（`LocalPath`）で、`upload_file`（`inputUnder`）は Outbound の方針（`OutboundPath`）で
+  判定する。ページは渡されたファイルをどこへでも送れるので、アップロードは
   マシンの外へ出るものとして扱う。
 - `refusedLocation`・`insideByIdentity`・`protectedDir` は捨てる。`resolveExisting`（作ろうとする場所の実体。行き先に
   `..` を含む壊れたリンクは信用しない）と、`os.Root` 越しの書き込み・乱数名の一時ファイル・rename は残す ——
@@ -36,9 +38,11 @@ ADR-0005 で `work_dir` の検証を、ADR-0006 で書き込みとアップロ�
 ## Consequences
 
 - **アップロードで新たに拒む**: 秘密の名前を持つファイル（`id_rsa`、`credentials.json`、`*service-account*.json`、
-  `.env`）と、資格情報のディレクトリの中のファイル —— どこにあっても（`work_dir` の中でも、ホームの外でも）。
+  `.env`）と、パスが資格情報のディレクトリ名・ファイル名（`.ssh`、`.aws`、`.npmrc`、`.netrc`、`.git-credentials`、
+  `.bash_history` など）を通るファイル —— どこにあっても（`work_dir` の中でも、ホームの外でも）。
 - **書き込みと `work_dir` で新たに拒む**: ランタイムと同じ一覧のうち、ホームにある本物の場所、あらゆる綴り、それらの
-  ディレクトリの直下のリンクの指す先。`$HOME` がアカウントのホームと違うときは両方。ホームが分からなければすべて。
+  ディレクトリの直下のリンクの指す先。`$HOME` がアカウントのホームと違うときは、それらの場所を両方のホームで（この
+  サーバー自身の場所はこれまでどおり `$HOME` に従う）。ホームが分からなければすべて。
 - **新たに通す**: `.env` のひな形（`.env.example` など）。
 - `work_dir_denied` の `details` に `reason` が加わる。
 - `writeUnder` の作成後の検査（ルートが実際に届いたディレクトリ）は、決定的なテストでは起こせない競合に備える

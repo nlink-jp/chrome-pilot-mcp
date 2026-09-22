@@ -93,7 +93,7 @@ help:
 # `make brew` generates this formula from the built darwin-arm64 zip into the
 # local nlink-jp/homebrew-tap checkout. The package target is unchanged.
 BREW_KIND := formula
-BREW_DESC := Zero-dependency Chrome automation MCP server (CDP direct)
+BREW_DESC := Chrome automation MCP server with no third-party dependencies (CDP direct)
 include scripts/release-brew.mk
 
 ## test-linux: run the test suite inside a Linux container (podman/docker)

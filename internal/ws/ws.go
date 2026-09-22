@@ -1,7 +1,7 @@
 // Package ws is a minimal RFC 6455 WebSocket client for talking CDP to a
 // local Chrome. It deliberately supports only what CDP needs — ws:// to a
 // loopback host, plaintext, no extensions, no subprotocols — so it can stay
-// small and dependency-free (zero-dependency policy, see CLAUDE.md).
+// small and free of third-party code (CLAUDE.md rule 1).
 package ws
 
 import (

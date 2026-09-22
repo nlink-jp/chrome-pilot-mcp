@@ -2,9 +2,10 @@
 
 ## Project summary
 
-Zero-dependency Chrome automation MCP server in Go. Reimplements the core
-automation surface (27 tools) of ChromeDevTools/chrome-devtools-mcp by
-speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
+Chrome automation MCP server in Go with no third-party dependencies (the one
+required module, nlink-jp/pathguard, is this organization's own).
+Reimplements the core automation surface (27 tools) of
+ChromeDevTools/chrome-devtools-mcp by speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
 d'être: eliminate npm supply-chain risk — single static binary, no third-party
 module in `go.mod` (only nlink-jp/pathguard, itself standard library only),
 nothing downloaded at runtime.
@@ -84,7 +85,7 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   localStorage/cookies from persistent profiles (browser.closeGrace).
 - The output directory is the caller's, named on every call and required
   (ADR-0005, organization ADR-021): `take_screenshot` / `screencast_start` /
-  the debug tools take `work_dir`, resolved by `resolveWorkDir` (argument,
+  the debug tools take `work_dir`, resolved by `Manager.workDir` (argument,
   then the request's `_meta`, then an error). There is no server workspace
   and no launch flag to fall back to. A new file-producing tool must take
   the argument too — an agent confined to its own directories cannot open
@@ -106,7 +107,11 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   argument checked only for a suffix or for existence is how both gaps got
   in, with tests pinning them. Refusals are `path_not_allowed` with
   `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir` /
-  `browser_profile`).
+  `browser_profile` / `unresolvable_path` — a chain of links that does not
+  end, or a path longer than any system opens / `home_unknown` /
+  `unconfigured` — pathguard refuses every call rather than protect
+  nothing). `work_dir_denied` carries the same reasons (not
+  `outside_work_dir`) plus `system_dir` and `home_dir`.
   pathguard compares places by file identity and by folded name, never by
   name alone: this disk is case-insensitive, and two reviews in a row got past
   a name comparison. Temporary files get a random fixed-length name and
@@ -155,13 +160,15 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 - Never trust an event as the sole completion signal. Navigation falls back
   to `document.readyState` because a missed load event was reported as a
   failed navigation for a page that had loaded.
-- The work-directory resolver is constructed in exactly one place:
-  `workDirResolver()` in `internal/tools/manager.go`, reached only through
-  `resolveWorkDir`, which every file-producing tool calls. Its `Denied` list
-  carries `config.Dir()` (organization ADR-021 §4) — the one expression for
-  this server's own tree, which holds both `config.toml` and
-  `browser.ProfilesDir()`'s managed browser profiles, so the denial covers
-  the cookies and logged-in sessions those profiles accumulate. Do not write
-  `workdir.Resolver{}`: an empty `Denied` is a resolver that lets a caller
-  drop screenshots into a live browser profile, or over the config that
-  governs what the server may launch.
+- The resolver is built in exactly one place, `Manager.resolver()` in
+  `internal/tools/manager.go`, from `Manager.protectedPlaces`, at every use:
+  `Manager.workDir` for `work_dir`, and the file checks in `confine.go`. The
+  places include `config.Dir()` (organization ADR-021 §4) — the one
+  expression for this server's own tree, which holds both `config.toml` and
+  `browser.ProfilesDir()`'s managed browser profiles, so the refusal covers
+  the cookies and logged-in sessions those profiles accumulate. Do not build
+  a `workdir.Resolver` anywhere else, and do not keep one: a resolver without
+  the places lets a caller drop screenshots into a live browser profile or
+  over the config that governs what the server may launch, and a kept one
+  misses a throwaway profile that appeared after it was built
+  (`TestAThrowawayProfileCreatedDuringARecordingIsProtected`).

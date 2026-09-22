@@ -9,7 +9,9 @@ A Chrome automation MCP server with no third-party dependencies. It reimplements
 automation surface of Google's
 [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)
 as a single Go binary that speaks the Chrome DevTools Protocol (CDP)
-directly — no npm, no npx, no puppeteer, and no external Go modules either.
+directly — no npm, no npx, no puppeteer, and no third-party Go modules
+either (the one module it requires, nlink-jp/pathguard, is this
+organization's own and uses only the standard library).
 
 ## Why
 
@@ -93,13 +95,23 @@ Notable behaviors:
   anywhere, so copy the file into your work directory first. A path outside,
   a symlink leading out, a credential or agent-control file (`~/.ssh`, `.env`
   and the like) — and, since a page can send a file anywhere, a file named as a
-  secret (`id_rsa`, `credentials.json`, `*service-account*.json`) or lying in a
-  credential directory wherever it sits — anything in this server's own
+  secret (`id_rsa`, `credentials.json`, `*service-account*.json`, `.env`) or
+  whose path passes through a credential directory or file name (`.ssh`,
+  `.aws`, `.config/gcloud`, `.npmrc`, `.netrc`, `.git-credentials`,
+  `.bash_history`, `.docker/config.json` and the like) wherever it sits —
+  anything in this server's own
   directory, in the profile of the Chrome it is driving or in your own Chrome
   profile, and a directory are refused before Chrome is asked for anything,
   under any spelling. The page is given the file's
   real path — for a symlink, its target, whose name the page sees — and the
   result's `uploaded` reports that path.
+- Both refusals say why in `details.reason`: `outside_work_dir`
+  (`path_not_allowed` only), `system_dir` and `home_dir` (`work_dir_denied`
+  only), `sensitive_path` (a credential or agent-control location, or on
+  upload a secret's name), `server_dir`, `browser_profile`,
+  `unresolvable_path` (a chain of links that does not end, or a path longer
+  than any system opens), and `home_unknown` / `unconfigured` (the check could
+  not be set up, so every call is refused).
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
   simulated.
 - Console and network capture starts when a page is first touched by a

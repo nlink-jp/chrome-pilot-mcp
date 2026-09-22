@@ -1,7 +1,7 @@
 // Package cmd implements the CLI entry point.
 //
-// chrome-pilot-mcp is zero-dependency by design (no external Go modules —
-// see CLAUDE.md), so the org's usual cobra scaffold is deliberately replaced
+// chrome-pilot-mcp has no third-party dependencies by design (see
+// CLAUDE.md), so the org's usual cobra scaffold is deliberately replaced
 // with stdlib flag parsing.
 package cmd
 

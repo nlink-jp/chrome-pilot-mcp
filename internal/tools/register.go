@@ -208,7 +208,7 @@ func registerInputTools(s *mcpserver.Server, m *Manager) {
 		Description: "Sets a local file on a file input element. Only a file under work_dir is handed over: the page can send it anywhere.",
 		InputSchema: schema(`{"type":"object","properties":{
 			"uid":{"type":"string","description":"The uid of the file input element from the page content snapshot."},
-			"filePath":{"type":"string","description":"The file to upload: a path relative to work_dir, or an absolute path under it. Credential and agent-control locations are refused."},
+			"filePath":{"type":"string","description":"The file to upload: a path relative to work_dir, or an absolute path under it. Credential and agent-control locations are refused, and so is a file named as a secret (id_rsa, .env, *service-account*.json) or whose path passes through a credential directory or file name (.ssh, .aws, .npmrc, .netrc and the like) wherever it sits."},
 			` + uploadWorkDirProp + `,
 			` + includeSnapshotProp + `
 		},"required":["uid","filePath","work_dir"]}`),

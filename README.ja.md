@@ -8,8 +8,9 @@
 サードパーティの依存を持たない Chrome 自動化 MCP サーバー。Google の
 [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)
 のコア自動化機能を、Chrome DevTools Protocol (CDP) を直接話す Go 単一
-バイナリとして再実装します — npm も npx も puppeteer も、外部 Go module
-すら使いません。
+バイナリとして再実装します — npm も npx も puppeteer も、サードパーティの
+Go module すら使いません（唯一必要とする nlink-jp/pathguard は本組織の
+モジュールで、標準ライブラリしか使いません）。
 
 ## なぜ作るか
 
@@ -93,12 +94,20 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   どこへでも送れるため、先にファイルを作業ディレクトリへコピーしてください。外を
   指すパス、外へ向かうシンボリックリンク、資格情報・エージェント制御ファイル
   (`~/.ssh`、`.env` など) —— ページはファイルをどこへでも送れるので、秘密の名前を持つ
-  ファイル(`id_rsa`、`credentials.json`、`*service-account*.json`)や、どこにあっても資格情報の
-  ディレクトリの中のファイルも —— 、このサーバー自身のディレクトリ・操作中の Chrome の
+  ファイル(`id_rsa`、`credentials.json`、`*service-account*.json`、`.env`)や、どこにあっても
+  パスが資格情報のディレクトリ名・ファイル名(`.ssh`、`.aws`、`.config/gcloud`、`.npmrc`、
+  `.netrc`、`.git-credentials`、`.bash_history`、`.docker/config.json` など)を通るファイルも
+  —— 、このサーバー自身のディレクトリ・操作中の Chrome の
   プロファイル・あなた自身の Chrome のプロファイルの中のもの、ディレクトリは、どんな綴りで
   渡しても Chrome に何かを頼む前に拒否します。ページに渡すのはファイルの実体のパスで、
   シンボリックリンクならリンク先です(ページに見えるのもリンク先の名前)。結果の
   `uploaded` はそのパスを返します。
+- どちらの拒否も理由を `details.reason` に入れます: `outside_work_dir`
+  (`path_not_allowed` のみ)、`system_dir` と `home_dir`(`work_dir_denied` のみ)、
+  `sensitive_path`(資格情報・エージェント制御の位置、アップロードでは秘密の名前)、
+  `server_dir`、`browser_profile`、`unresolvable_path`(終わらないリンクの連鎖や、
+  どのシステムも開けない長さのパス)、`home_unknown` / `unconfigured`(判定を用意
+  できなかったため、すべての呼び出しを拒否)。
 - `drag` はマウスイベントベースです (HTML5 dragstart/drop ベースの UI は
   シミュレートしません)。
 - console / network の記録は、ツールがページに最初に触れた時点から
