@@ -123,7 +123,7 @@ const workDirProp = `"work_dir":{"type":"string","description":"Absolute path to
 
 // localWorkDirProp is work_dir for navigate_page and new_page, needed only
 // for a local file (ADR-0008).
-const localWorkDirProp = `"work_dir":{"type":"string","description":"Needed only for a file:// URL (view-source:file:// included): absolute path to your session or working directory. A local file opens only if it lies under it and is not a credential or agent-control location, and the page may then load local files only from under it. It must already exist; nothing here expands ~ or resolves a relative path."}`
+const localWorkDirProp = `"work_dir":{"type":"string","description":"Needed only for a file:// URL (view-source:file:// included): absolute path to your session or working directory. A local file opens only if it lies under it and is not a credential or agent-control location, and the tab may then load local files only from under the work_dirs it was opened with. It must already exist; nothing here expands ~ or resolves a relative path."}`
 
 // uploadWorkDirProp is work_dir for upload_file, which reads a file rather
 // than writing one (organization ADR-021 §7, project ADR-0006).

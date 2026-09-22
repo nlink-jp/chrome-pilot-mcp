@@ -19,7 +19,8 @@ const Instructions = "chrome-pilot-mcp drives a Chrome browser on this machine o
 	"<work_dir>/screencasts/, or at the filePath given to screencast_start, which must lie under work_dir too; both " +
 	"results return the file's path. upload_file hands a page only a file under work_dir, so copy a file there first. " +
 	"navigate_page and new_page take work_dir only for a local file (file://, view-source:file:// too), and then it is " +
-	"required with no default: the file must lie under it, the page may load local files only from under it, and a tab " +
+	"required with no default: the file must lie under it, the tab may load local files only from under a work_dir " +
+	"it was opened with, and a tab " +
 	"showing any other local file can only be navigated away with navigate_page. " +
 	"When an action opens an alert, confirm or prompt, its result says so and the page stays blocked until you " +
 	"call handle_dialog."

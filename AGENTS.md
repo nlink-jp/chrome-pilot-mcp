@@ -21,7 +21,8 @@ thing as a client before calling a release good**.
 Design background: `docs/en/chrome-pilot-mcp-rfp.md` (ja: `docs/ja/`) and
 the ADRs — 0001 host allow/block lists, 0002 config.toml, 0003 browser
 profiles, 0004 per-call workspace root (superseded the same day by 0005), 0005 the
-work_dir contract.
+work_dir contract, 0006 writes and uploads under work_dir, 0007 pathguard, 0008
+file:// only inside the call's work_dir (with its accepted residual risks).
 
 ## Build & test
 

@@ -125,8 +125,11 @@ func TestTheInterceptionHoldsLocalFilesToTheGrants(t *testing.T) {
 	waitUntil(t, "another session's file load fails", func() bool { return f.callCount("Fetch.failRequest") == 2 })
 	paused("sess-T1", "D", "https://example.com/app.js")
 	waitUntil(t, "the web is not held to the grants", func() bool { return f.callCount("Fetch.continueRequest") == 2 })
+	// Inside a grant, pathguard's Local policy still applies to every load.
+	paused("sess-T1", "E", "file://"+filepath.Join(work, ".env"))
+	waitUntil(t, "a .env inside the grant fails", func() bool { return f.callCount("Fetch.failRequest") == 3 })
 	for _, c := range f.callsOf("Fetch.failRequest") {
-		if c.params["requestId"] == "A" || c.params["requestId"] == "D" {
+		if id := c.params["requestId"]; id == "A" || id == "D" {
 			t.Errorf("request %v was failed", c.params["requestId"])
 		}
 	}

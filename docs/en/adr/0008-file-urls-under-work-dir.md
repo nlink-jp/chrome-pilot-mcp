@@ -79,12 +79,30 @@ inside.
 - `Fetch` is always on with `file://*`. It does not affect http browsing (measured).
 - Remaining limits: JavaScript in an HTML file inside a granted `work_dir` can send that file's own content out (the
   same egress limit as ADR-0001). The interception does not reach a tab not yet attached, but reads stop at their
-  entrance. Workers a granted HTML file starts are not measured (the interception is installed on page sessions
-  only). `chrome:`, `devtools:`, `blob:` and `filesystem:` are left to the browser as before (none reads an
-  arbitrary path).
+  entrance. `chrome:`, `devtools:`, `blob:` and `filesystem:` are left to the browser as before (none reads an
+  arbitrary path). The other accepted residuals are in the table below.
 - A grant covers everything under `work_dir`. A broad directory (`~/Documents`, say) opens all of it — name the
   narrowest one.
 - ADR-0001's "`file://` / `data:` are enforced at the tool-argument layer only" is amended for `file://`.
+
+## Risk assessment and accepted residuals
+
+What is closed is a model — a prompt-injected one included — reading an arbitrary local file, a credential above
+all, through this server. Every way measured to read one (the arguments, a page's script, `view-source:`,
+`window.open`) is closed by the three enforcement points above. The reviews named further details; those that would
+complicate the implementation well beyond what they buy are not taken, and the following are accepted as tolerable
+risk (2026-09-22, on the operator's rule: judge whether a risk is tolerable by an overall assessment rather than
+complicate the code chasing perfection).
+
+| Residual | Why it is accepted |
+|---|---|
+| When `navigate_page` moves a tab off a local file no grant covers, the collectors that attaching turns on can pick up console messages that page logs as it leaves, and a later listing can show them | Only what that page itself logs. A credential file runs no script. In attach mode a page the user opened is in a browser the user handed to the agent |
+| In the few round trips of a first attach, a script moving the tab to a local file at exactly that moment could slip past the entrance check | It needs precise timing and is impractical to aim for; every later load is stopped by the interception |
+| The tool-argument layer and Chrome read some `file:` forms differently (`\`, `\|`, a Windows path without a drive) | The interception judges the URL as Chrome resolved it and fails the load; the difference is only in how clear the error is |
+| `list_pages` shows the `<title>` of a local page no grant covers | One line of title; the content is not readable |
+| Chrome opens the file by its path after the decision, so a file swapped in between is not caught | The same limit as `upload_file` (CDP takes paths) |
+| Grants of a tab closed other than by `close_page` stay in the table | Session ids are never reused; what stays is a little memory |
+| Workers a granted HTML file starts are not measured | The interception sits on page sessions; a `file://` page cannot `fetch` another file (measured) |
 
 ## References
 

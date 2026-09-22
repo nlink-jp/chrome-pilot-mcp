@@ -90,14 +90,15 @@ Notable behaviors:
 - A local file (`file://`, also inside `view-source:`) opens only under
   `work_dir`: `navigate_page` and `new_page` take `work_dir` for a local file
   (the argument, else the runtime's `_meta` hint; there is no default), and a
-  credential or agent-control location under it is refused too. The page may
+  credential or agent-control location under it is refused too. The tab may
   then load local files — its CSS and images, frames, a script's navigation —
-  only from under that `work_dir`; anything else is blocked inside Chrome. A
-  tab showing any other local file (one a script opened with `window.open`, or
-  one you opened) can only be navigated away with `navigate_page`, and the
-  console messages, network requests and dialog text of such a page are not
-  returned. A grant covers everything under `work_dir`, so name the narrowest
-  directory.
+  only from under the `work_dir`s it was opened with; anything else is blocked
+  inside Chrome. A tab showing any other local file (one a script opened with
+  `window.open`, or one you opened) can only be navigated away with
+  `navigate_page`, and while it shows that file its console messages, network
+  requests and dialog text are not returned. With `--attach`, a local file you
+  open by hand in a tab this server has used is blocked the same way. A grant
+  covers everything under `work_dir`, so name the narrowest directory.
 - Nothing is written outside `work_dir`: a `filePath` given to
   `screencast_start` is relative to it, or absolute inside it, and anything
   else is refused with `path_not_allowed` before recording starts.
