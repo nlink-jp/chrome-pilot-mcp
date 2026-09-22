@@ -98,7 +98,13 @@ func inputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 	// Where the path lands, a missing tail included, before anything says
 	// whether it exists: outside work_dir, an existing file and a missing one
 	// get the same answer.
-	if where, ok := resolveExisting(raw); !ok || !under(wsRoot, where) {
+	where, ok := resolveExisting(raw)
+	if !ok {
+		return "", toolerr.Newf(toolerr.CodePathNotAllowed,
+			"filePath %q is refused: a symbolic link on the path cannot be followed safely", filePath).
+			WithDetails(map[string]any{"reason": "outside_work_dir", "filePath": filePath, "work_dir": wsRoot})
+	}
+	if !under(wsRoot, where) {
 		return "", outside()
 	}
 	real, err := filepath.EvalSymlinks(raw)

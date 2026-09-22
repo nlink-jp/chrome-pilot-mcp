@@ -49,8 +49,8 @@ separates reads and writes (Local) from what leaves the machine (Outbound).
 - **Refused now for writes and `work_dir`**: the real places under your home from the runtimes'
   list, under every spelling, and wherever a link directly inside one of those directories points;
   when `$HOME` names another directory than the account's home, those places under both (this
-  server's own directory follows `$HOME`, as it did before; your own Chrome profiles are protected
-  under both homes, a relative `$HOME` never counting as one); everything when the home is unknown.
+  server's own directory follows `$HOME`, as it did before; on macOS and Linux your own Chrome
+  profiles are protected under both homes, a relative `$HOME` never counting as one); everything when the home is unknown.
 - **Accepted now**: the `.env` templates (`.env.example` and the like).
 - `work_dir_denied` carries `reason` in its `details`.
 - The after-creation check in `writeUnder` (the directory the root actually reached) guards a race no

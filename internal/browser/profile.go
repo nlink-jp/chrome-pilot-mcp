@@ -75,7 +75,7 @@ func resolveProfile(profile, userDataDir string) (dir string, persistent bool, e
 // RealChromeProfileRoots lists this machine's real Chrome and Chromium
 // profile roots — the user's own browsers, with their cookies and saved logins.
 func RealChromeProfileRoots() []string {
-	return realChromeProfileRoots(runtime.GOOS, os.Getenv, userHomes())
+	return realChromeProfileRoots(runtime.GOOS, os.Getenv, homesFor(runtime.GOOS))
 }
 
 // userHomes are the home directories the user's own browsers may keep their
@@ -93,6 +93,16 @@ func userHomes() []string {
 		out = append(out, filepath.Clean(u.HomeDir))
 	}
 	return out
+}
+
+// homesFor is userHomes where the roots are home-relative (macOS, Linux).
+// Windows roots come from LOCALAPPDATA and APPDATA, and an account lookup
+// there can be slow on a domain-joined machine.
+func homesFor(goos string) []string {
+	if goos == "windows" {
+		return nil
+	}
+	return userHomes()
 }
 
 // realChromeProfileRoots lists the well-known user-data-dir locations of
@@ -148,7 +158,7 @@ func realChromeProfileRoots(goos string, getenv func(string) string, homes []str
 // regardless of the separator the host platform uses.
 func isRealChromeProfile(path, goos string, getenv func(string) string) bool {
 	target := normalizePath(path, goos)
-	for _, root := range realChromeProfileRoots(goos, getenv, userHomes()) {
+	for _, root := range realChromeProfileRoots(goos, getenv, homesFor(goos)) {
 		root = normalizePath(root, goos)
 		if root == "" {
 			continue

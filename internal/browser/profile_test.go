@@ -2,6 +2,7 @@ package browser
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -172,9 +173,29 @@ func TestRealChromeRootsFollowAbsoluteHomesOnly(t *testing.T) {
 			t.Errorf("userHomes() = %q holds a relative home", userHomes())
 		}
 	}
+	if runtime.GOOS == "windows" {
+		return // os.UserHomeDir reads USERPROFILE there
+	}
 	other := t.TempDir()
 	t.Setenv("HOME", other)
 	if homes := userHomes(); !slices.Contains(homes, filepath.Clean(other)) {
 		t.Errorf("userHomes() = %q lacks $HOME %s", homes, other)
+	}
+}
+
+// The refusal to drive the user's own profile follows the account's home too:
+// with $HOME pointed elsewhere, the real Chrome profile is still refused.
+func TestTheRealProfileIsRefusedWithHomeElsewhere(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the darwin roots are checked here")
+	}
+	acct, err := user.Current()
+	if err != nil || !filepath.IsAbs(acct.HomeDir) {
+		t.Skipf("no account home: %v", err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	real := filepath.Join(acct.HomeDir, "Library", "Application Support", "Google", "Chrome", "Default")
+	if !isRealChromeProfile(real, "darwin", os.Getenv) {
+		t.Errorf("%s is not refused with $HOME elsewhere", real)
 	}
 }
