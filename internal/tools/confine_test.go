@@ -499,3 +499,106 @@ func TestAnUploadIsJudgedAsLeavingTheMachine(t *testing.T) {
 		t.Errorf("an ordinary file was refused for upload: %v", err)
 	}
 }
+
+// The places are read at the moment of use, not when the recording began: a
+// throwaway profile that appears while a recording runs — another instance
+// launching its browser — is protected at stop (the last review).
+func TestAThrowawayProfileCreatedDuringARecordingIsProtected(t *testing.T) {
+	temp := resolvedTempDir(t)
+	t.Setenv("TMPDIR", temp)
+	if err := os.Mkdir(filepath.Join(temp, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	if _, err := callTool(t, m.screencastStart, `{"filePath":"sub/cast.gif","work_dir":`+quote(temp)+`}`); err != nil {
+		t.Fatalf("screencast_start: %v", err)
+	}
+	fresh := filepath.Join(temp, "chrome-pilot-mcp-profile-999", "Default")
+	if err := os.MkdirAll(fresh, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(temp, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("chrome-pilot-mcp-profile-999", "Default"), filepath.Join(temp, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	feedOneFrame(t, m, f)
+	_, err := callTool(t, m.screencastStop, `{}`)
+	wantPathRefused(t, err, "server_dir")
+	wantEmpty(t, fresh)
+}
+
+// A chain of links through a credential directory: the end is an ordinary
+// directory in work_dir, and only the path as named shows the hop through
+// ~/.config/gcloud — a link below a place's top level is not one whose target
+// is protected, so the hop is what gives it away (the last review). The
+// caller-named output and screenshots/ are both judged so.
+func TestALinkChainThroughACredentialDirectoryIsRefused(t *testing.T) {
+	home := resolvedTempDir(t)
+	t.Setenv("HOME", home)
+	work := filepath.Join(home, ".config")
+	end := filepath.Join(work, "end")
+	for _, d := range []string{filepath.Join(work, "gcloud", "sub"), end} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join("..", "..", "end"), filepath.Join(work, "gcloud", "sub", "hop")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("gcloud", "sub", "hop"), filepath.Join(work, "screenshots")); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "https://example.com/")
+	f.overrides["Page.captureScreenshot"] = func(string, map[string]any) (any, string) {
+		return map[string]any{"data": base64.StdEncoding.EncodeToString([]byte("PNG"))}, ""
+	}
+	m := newTestManager(t, Config{}, f)
+	_, err := callTool(t, m.takeScreenshot, `{"work_dir":`+quote(work)+`}`)
+	wantPathRefused(t, err, "sensitive_path")
+	_, err = callTool(t, m.screencastStart, `{"filePath":"screenshots/cast.gif","work_dir":`+quote(work)+`}`)
+	wantPathRefused(t, err, "sensitive_path")
+	wantEmpty(t, end)
+}
+
+// An upload is judged before anything resolves it, so a credential file that
+// does not exist is refused like one that does: "no such file" would tell
+// the caller which secrets are there.
+func TestAMissingCredentialFileIsRefusedNotReportedMissing(t *testing.T) {
+	home := resolvedTempDir(t)
+	t.Setenv("HOME", home)
+	work := filepath.Join(home, ".config")
+	if err := os.MkdirAll(filepath.Join(work, "gcloud"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := new(Manager).resolver()
+	for _, rel := range []string{"gcloud/credentials.db", "id_rsa"} {
+		var te *toolerr.Error
+		if _, err := inputUnder(work, rel, r); !errors.As(err, &te) || te.Code != toolerr.CodePathNotAllowed {
+			t.Errorf("inputUnder(%s), missing: %v, want %s", rel, err, toolerr.CodePathNotAllowed)
+		}
+	}
+}
+
+// A relative TMPDIR leaves the throwaway profiles protected and the server
+// working: pathguard refuses every call for a place without an absolute path
+// rather than protect nothing, so the places are made absolute first (the
+// last review).
+func TestARelativeTempDirStillWorks(t *testing.T) {
+	base := resolvedTempDir(t)
+	t.Chdir(base)
+	t.Setenv("TMPDIR", "tmp")
+	mustWrite(t, filepath.Join(base, "tmp", "chrome-pilot-mcp-profile-1", "Default", "Cookies"), "session")
+	work := resolvedTempDir(t)
+	mustWrite(t, filepath.Join(work, "report.pdf"), "x")
+	r := new(Manager).resolver()
+	if _, err := inputUnder(work, "report.pdf", r); err != nil {
+		t.Errorf("an ordinary upload with a relative TMPDIR: %v", err)
+	}
+	var te *toolerr.Error
+	if _, err := inputUnder(base, filepath.Join("tmp", "chrome-pilot-mcp-profile-1", "Default", "Cookies"), r); !errors.As(err, &te) || te.Code != toolerr.CodePathNotAllowed {
+		t.Errorf("a throwaway profile's cookies with a relative TMPDIR: %v, want %s", err, toolerr.CodePathNotAllowed)
+	}
+}

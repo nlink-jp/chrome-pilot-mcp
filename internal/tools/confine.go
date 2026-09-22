@@ -30,9 +30,9 @@ import (
 // the credential and agent-control places, and this server's own directories
 // (its config, the profile of the browser it drives, throwaway profiles, the
 // user's own Chrome profiles). Both are nlink-jp/pathguard's judgement, by
-// file identity and by folded name (ADR-0007): writes and a work_dir under its
-// Local policy, an upload — which leaves the machine — under its Outbound
-// policy. A work_dir may legitimately be a parent of either — ~/.config,
+// file identity and by folded name (ADR-0007): a work_dir under its list of
+// what may not be a work directory, writes under its Local policy, an upload
+// — which leaves the machine — under its Outbound policy. A work_dir may legitimately be a parent of either — ~/.config,
 // ~/Library/Application Support — and the files under it are then the
 // managed browser profiles' cookies, or config.toml.
 
@@ -82,6 +82,13 @@ func inputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 		raw = filepath.Join(wsRoot, raw)
 	}
 	raw = filepath.Clean(raw)
+	// Judged before anything resolves it: pathguard follows the links itself
+	// and needs no existing file, and "no such file" versus "refused" would
+	// otherwise say whether a credential file exists.
+	if reason, why := r.OutboundPath(raw, raw); why != "" {
+		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
+			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
+	}
 	real, err := filepath.EvalSymlinks(raw)
 	if err != nil {
 		return "", toolerr.Newf(toolerr.CodeInvalidArguments, "filePath: %v", err)
@@ -134,7 +141,9 @@ func writeUnder(root *os.Root, rel string, r workdir.Resolver, write func(io.Wri
 	if !ok {
 		return refuse("outside_work_dir", "a symbolic link on the output path cannot be followed safely")
 	}
-	if reason, why := r.LocalPath(where, where); why != "" {
+	// The path as named goes too: pathguard follows every hop of a chain of
+	// links from it, and the resolved end alone has lost them.
+	if reason, why := r.LocalPath(filepath.Join(root.Name(), dir), where); why != "" {
 		return refuse(reason, why)
 	}
 	if dir != "." {

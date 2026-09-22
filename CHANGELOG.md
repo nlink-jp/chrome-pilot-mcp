@@ -12,19 +12,38 @@
   dependency rule says so.
 - `upload_file` is judged as a file that **leaves the machine** (pathguard's
   Outbound policy): a file named as a secret (`id_rsa`, `credentials.json`,
-  `*service-account*.json`, `.env`) or lying in a credential directory is now
-  refused wherever it sits, even inside `work_dir` and outside your home.
-- Writes and `work_dir` are judged by the Local policy: the real places under
-  your home from the list gem-agent and lagent use are refused (newly
-  `~/.kube`, `~/.config/gh`, `~/.azure`, `~/.terraform.d`, `~/.gemini`,
+  `*service-account*.json`, `.env`) or whose path passes through a credential
+  directory or file name (`.ssh`, `.aws`, `.config/gcloud`, `.npmrc`,
+  `.netrc`, `.git-credentials`, `.bash_history`, `.docker/config.json` and
+  the like) is now refused wherever it sits, even inside `work_dir` and
+  outside your home.
+- `work_dir` is judged by pathguard's list of what may not be a work
+  directory, and writes by its Local policy: the real places under your home
+  from the list gem-agent and lagent use are refused (newly `~/.kube`,
+  `~/.config/gh`, `~/.azure`, `~/.terraform.d`, `~/.gemini`,
   `~/.config/mcp-bridge`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
   `~/.git-credentials`, `~/.vault-token`, `~/.docker/config.json`,
   `~/.claude.json`, `~/.bash_history`, `~/.zsh_history`), under every spelling,
   and wherever a link directly inside one of those directories points. When
-  `$HOME` names another directory than the account's home, both are protected.
-  `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are accepted.
-  When the home directory cannot be determined, every call is refused.
+  `$HOME` names another directory than the account's home, those places are
+  protected under both; this server's own places follow `$HOME`, as they did
+  before. `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are
+  accepted. When the home directory cannot be determined, every call is
+  refused.
+- A path that cannot be resolved — a chain of links that does not end, a path
+  longer than any system opens, a NUL byte — is refused with
+  `details.reason` `unresolvable_path`.
 - `work_dir_denied` carries `reason` in its `details`.
+- `upload_file`'s `filePath` description names the refusals above.
+
+### Fixed
+
+- A write whose directory is reached through a chain of links passing through
+  a credential directory (`screenshots/` → `~/.config/gcloud/sub/link` → a
+  directory in `work_dir`) is refused: only the end of the chain was judged.
+- An upload is judged before its links are resolved, so a credential file
+  that does not exist is refused like one that does, instead of being
+  reported as missing — which told the caller which secrets are there.
 
 ## [0.8.0] - 2026-09-22
 
