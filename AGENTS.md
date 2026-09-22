@@ -5,10 +5,11 @@
 Chrome automation MCP server in Go with no third-party dependencies (the one
 required module, nlink-jp/pathguard, is this organization's own).
 Reimplements the core automation surface (27 tools) of
-ChromeDevTools/chrome-devtools-mcp by speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
-d'être: eliminate npm supply-chain risk — single static binary, no third-party
-module in `go.mod` (only nlink-jp/pathguard, itself standard library only),
-nothing downloaded at runtime.
+ChromeDevTools/chrome-devtools-mcp by speaking CDP (Chrome DevTools Protocol)
+directly over WebSocket. Raison d'être: eliminate npm supply-chain risk —
+single static binary, no third-party module in `go.mod` (only
+nlink-jp/pathguard, itself standard library only), nothing downloaded at
+runtime.
 
 **Current stage: released (the version is in `git tag` and the CHANGELOG), 27/27 tools.** All tools verified E2E
 against real headless Chrome, plus config.toml, profile persistence, and

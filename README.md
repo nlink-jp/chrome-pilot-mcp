@@ -107,11 +107,12 @@ Notable behaviors:
   result's `uploaded` reports that path.
 - Both refusals say why in `details.reason`: `outside_work_dir`
   (`path_not_allowed` only), `system_dir` and `home_dir` (`work_dir_denied`
-  only), `sensitive_path` (a credential or agent-control location, or on
-  upload a secret's name), `server_dir`, `browser_profile`,
-  `unresolvable_path` (a chain of links that does not end, or a path longer
-  than any system opens), and `home_unknown` / `unconfigured` (the check could
-  not be set up, so every call is refused).
+  only), `sensitive_path` (a credential or agent-control location, or a
+  `.env`; on upload also a secret's name, or a path through a credential
+  directory or file name), `server_dir`, `browser_profile`,
+  `unresolvable_path` (a NUL byte; on upload also a chain of links that does
+  not end, or a path longer than any system opens), and `home_unknown` /
+  `unconfigured` (the check could not be set up, so every call is refused).
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not
   simulated.
 - Console and network capture starts when a page is first touched by a

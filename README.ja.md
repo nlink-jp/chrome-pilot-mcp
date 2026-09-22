@@ -71,7 +71,7 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   ページでは 1 枚も得られません。`screencast_stop` は常に `truncated` を
   返し、`recordedMs` (実時間) と `gifDurationMs` (GIF の再生時間) を
   区別します。
-- `take_screenshot` は workspace に保存しつつ、小さければ画像を inline
+- `take_screenshot` は `work_dir` の下に保存しつつ、小さければ画像を inline
   でも返します。`screencast_stop` は Go 標準ライブラリのみでアニメーション
   GIF を合成します。
 - ファイルを産むツールはすべて**必須**の絶対パス `work_dir` を取り、その配下に
@@ -104,10 +104,11 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   `uploaded` はそのパスを返します。
 - どちらの拒否も理由を `details.reason` に入れます: `outside_work_dir`
   (`path_not_allowed` のみ)、`system_dir` と `home_dir`(`work_dir_denied` のみ)、
-  `sensitive_path`(資格情報・エージェント制御の位置、アップロードでは秘密の名前)、
-  `server_dir`、`browser_profile`、`unresolvable_path`(終わらないリンクの連鎖や、
-  どのシステムも開けない長さのパス)、`home_unknown` / `unconfigured`(判定を用意
-  できなかったため、すべての呼び出しを拒否)。
+  `sensitive_path`(資格情報・エージェント制御の位置や `.env`。アップロードでは
+  秘密の名前や、資格情報のディレクトリ名・ファイル名を通るパスも)、`server_dir`、
+  `browser_profile`、`unresolvable_path`(NUL を含むパス。アップロードでは終わらない
+  リンクの連鎖や、どのシステムも開けない長さのパスも)、`home_unknown` /
+  `unconfigured`(判定を用意できなかったため、すべての呼び出しを拒否)。
 - `drag` はマウスイベントベースです (HTML5 dragstart/drop ベースの UI は
   シミュレートしません)。
 - console / network の記録は、ツールがページに最初に触れた時点から
