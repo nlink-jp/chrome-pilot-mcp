@@ -30,9 +30,9 @@ import (
 // the credential and agent-control places, and this server's own directories
 // (its config, the profile of the browser it drives, throwaway profiles, the
 // user's own Chrome profiles). Both are nlink-jp/pathguard's judgement, by
-// file identity and by folded name (ADR-0007): a work_dir under its list of
-// what may not be a work directory, writes under its Local policy, an upload
-// — which leaves the machine — under its Outbound policy. A work_dir may legitimately be a parent of either — ~/.config,
+// file identity and by folded name (ADR-0007): a work_dir under its list
+// of what may not be a work directory, writes under its Local policy, an
+// upload — which leaves the machine — under its Outbound policy. A work_dir may legitimately be a parent of either — ~/.config,
 // ~/Library/Application Support — and the files under it are then the
 // managed browser profiles' cookies, or config.toml.
 
@@ -89,6 +89,18 @@ func inputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
 			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
 	}
+	outside := func() error {
+		return toolerr.Newf(toolerr.CodePathNotAllowed,
+			"filePath %q is outside work_dir %q: a page can send what it is given anywhere, so only a file under "+
+				"the work directory is handed over — copy it there first", filePath, wsRoot).
+			WithDetails(map[string]any{"reason": "outside_work_dir", "filePath": filePath, "work_dir": wsRoot})
+	}
+	// Where the path lands, a missing tail included, before anything says
+	// whether it exists: outside work_dir, an existing file and a missing one
+	// get the same answer.
+	if where, ok := resolveExisting(raw); !ok || !under(wsRoot, where) {
+		return "", outside()
+	}
 	real, err := filepath.EvalSymlinks(raw)
 	if err != nil {
 		return "", toolerr.Newf(toolerr.CodeInvalidArguments, "filePath: %v", err)
@@ -97,12 +109,8 @@ func inputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
 			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
 	}
-	rel, err := filepath.Rel(wsRoot, real)
-	if err != nil || rel == "." || !filepath.IsLocal(rel) {
-		return "", toolerr.Newf(toolerr.CodePathNotAllowed,
-			"filePath %q is outside work_dir %q: a page can send what it is given anywhere, so only a file under "+
-				"the work directory is handed over — copy it there first", filePath, wsRoot).
-			WithDetails(map[string]any{"reason": "outside_work_dir", "filePath": filePath, "work_dir": wsRoot})
+	if !under(wsRoot, real) {
+		return "", outside()
 	}
 	fi, err := os.Stat(real)
 	if err != nil {
@@ -112,6 +120,12 @@ func inputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 		return "", toolerr.Newf(toolerr.CodeInvalidArguments, "filePath %q is not a regular file", filePath)
 	}
 	return real, nil
+}
+
+// under reports whether p lies strictly inside dir.
+func under(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != "." && filepath.IsLocal(rel)
 }
 
 // writeUnder writes a file at rel under root, creating its directory.
@@ -164,7 +178,7 @@ func writeUnder(root *os.Root, rel string, r workdir.Resolver, write func(io.Wri
 	if rerr != nil || perr != nil || !os.SameFile(viaRoot, viaPath) {
 		return refuse("outside_work_dir", "the work directory is no longer where it was when the call began")
 	}
-	if reason, why := r.LocalPath(real, real); why != "" {
+	if reason, why := r.LocalPath(filepath.Join(root.Name(), dir), real); why != "" {
 		return refuse(reason, why)
 	}
 	tmp, f, err := createExclusive(root, dir)

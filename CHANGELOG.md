@@ -26,13 +26,15 @@
   `~/.claude.json`, `~/.bash_history`, `~/.zsh_history`), under every spelling,
   and wherever a link directly inside one of those directories points. When
   `$HOME` names another directory than the account's home, those places are
-  protected under both; this server's own places follow `$HOME`, as they did
-  before. `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are
+  protected under both; this server's own directory follows `$HOME`, as it
+  did before, and your own Chrome profiles are protected under `$HOME` (when
+  it is absolute) and under the account's home. `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are
   accepted. When the home directory cannot be determined, every call is
   refused.
-- A path that cannot be resolved — a chain of links that does not end, a path
-  longer than any system opens, a NUL byte — is refused with
-  `details.reason` `unresolvable_path`.
+- A path with a NUL byte, and an upload whose path cannot be resolved — a
+  chain of links that does not end, a path longer than any system opens — are
+  refused with `details.reason` `unresolvable_path` (a write through such a
+  path is refused as `outside_work_dir`).
 - `work_dir_denied` carries `reason` in its `details`.
 - `upload_file`'s `filePath` description names the refusals above.
 
@@ -44,6 +46,12 @@
 - An upload is judged before its links are resolved, so a credential file
   that does not exist is refused like one that does, instead of being
   reported as missing — which told the caller which secrets are there.
+- An upload outside `work_dir` is refused as outside whether or not the file
+  exists; a missing one was reported with the file-system error, which also
+  named the first missing directory.
+- Your own Chrome profiles are protected under the account's home as well as
+  `$HOME`: with `$HOME` pointed elsewhere, or relative, they were not
+  protected.
 
 ## [0.8.0] - 2026-09-22
 

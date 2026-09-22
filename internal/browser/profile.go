@@ -3,9 +3,11 @@ package browser
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/config"
@@ -72,39 +74,56 @@ func resolveProfile(profile, userDataDir string) (dir string, persistent bool, e
 
 // RealChromeProfileRoots lists this machine's real Chrome and Chromium
 // profile roots — the user's own browsers, with their cookies and saved logins.
-func RealChromeProfileRoots() []string { return realChromeProfileRoots(runtime.GOOS, os.Getenv) }
+func RealChromeProfileRoots() []string {
+	return realChromeProfileRoots(runtime.GOOS, os.Getenv, userHomes())
+}
+
+// userHomes are the home directories the user's own browsers may keep their
+// profiles under: $HOME when it is absolute, and the account's home from the
+// user database. The browsers do not follow this process's environment, so a
+// $HOME pointed elsewhere — or a relative one, which would name a directory
+// under this process's working directory — must not move the roots away from
+// the real ones.
+func userHomes() []string {
+	var out []string
+	if h, err := os.UserHomeDir(); err == nil && filepath.IsAbs(h) {
+		out = append(out, filepath.Clean(h))
+	}
+	if u, err := user.Current(); err == nil && filepath.IsAbs(u.HomeDir) && !slices.Contains(out, filepath.Clean(u.HomeDir)) {
+		out = append(out, filepath.Clean(u.HomeDir))
+	}
+	return out
+}
 
 // realChromeProfileRoots lists the well-known user-data-dir locations of
-// the user's own Chrome/Chromium installs.
-func realChromeProfileRoots(goos string, getenv func(string) string) []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = ""
-	}
+// the user's own Chrome/Chromium installs, under each of homes.
+func realChromeProfileRoots(goos string, getenv func(string) string, homes []string) []string {
 	switch goos {
 	case "darwin":
-		if home == "" {
-			return nil
+		var out []string
+		for _, home := range homes {
+			base := filepath.Join(home, "Library", "Application Support")
+			out = append(out,
+				filepath.Join(base, "Google", "Chrome"),
+				filepath.Join(base, "Google", "Chrome Beta"),
+				filepath.Join(base, "Google", "Chrome Dev"),
+				filepath.Join(base, "Google", "Chrome Canary"),
+				filepath.Join(base, "Chromium"),
+			)
 		}
-		base := filepath.Join(home, "Library", "Application Support")
-		return []string{
-			filepath.Join(base, "Google", "Chrome"),
-			filepath.Join(base, "Google", "Chrome Beta"),
-			filepath.Join(base, "Google", "Chrome Dev"),
-			filepath.Join(base, "Google", "Chrome Canary"),
-			filepath.Join(base, "Chromium"),
-		}
+		return out
 	case "linux":
-		if home == "" {
-			return nil
+		var out []string
+		for _, home := range homes {
+			cfg := filepath.Join(home, ".config")
+			out = append(out,
+				filepath.Join(cfg, "google-chrome"),
+				filepath.Join(cfg, "google-chrome-beta"),
+				filepath.Join(cfg, "google-chrome-unstable"),
+				filepath.Join(cfg, "chromium"),
+			)
 		}
-		cfg := filepath.Join(home, ".config")
-		return []string{
-			filepath.Join(cfg, "google-chrome"),
-			filepath.Join(cfg, "google-chrome-beta"),
-			filepath.Join(cfg, "google-chrome-unstable"),
-			filepath.Join(cfg, "chromium"),
-		}
+		return out
 	case "windows":
 		var out []string
 		for _, env := range []string{"LOCALAPPDATA", "APPDATA"} {
@@ -129,7 +148,7 @@ func realChromeProfileRoots(goos string, getenv func(string) string) []string {
 // regardless of the separator the host platform uses.
 func isRealChromeProfile(path, goos string, getenv func(string) string) bool {
 	target := normalizePath(path, goos)
-	for _, root := range realChromeProfileRoots(goos, getenv) {
+	for _, root := range realChromeProfileRoots(goos, getenv, userHomes()) {
 		root = normalizePath(root, goos)
 		if root == "" {
 			continue

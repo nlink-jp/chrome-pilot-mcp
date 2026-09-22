@@ -425,9 +425,12 @@ func (m *Manager) resolver() workdir.Resolver {
 // driving, every throwaway profile in the temp directory, and the user's own
 // Chrome profiles.
 func (m *Manager) protectedPlaces() []pathguard.Place {
-	// A relative path (a relative TMPDIR, say) is made absolute the way the
-	// process would use it; pathguard refuses every call for a place without
-	// an absolute path rather than protect nothing.
+	// A relative path — a relative TMPDIR, or this server's own directory
+	// under a relative $HOME — is made absolute the way this process uses
+	// it; pathguard refuses every call for a place without an absolute path
+	// rather than protect nothing. The user's own Chrome roots do not follow
+	// this process, so they come from absolute homes only
+	// (browser.RealChromeProfileRoots).
 	place := func(dir, reason, why string) pathguard.Place {
 		if abs, err := filepath.Abs(dir); err == nil {
 			dir = abs

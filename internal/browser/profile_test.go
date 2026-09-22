@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -149,5 +150,31 @@ func TestSingletonHint(t *testing.T) {
 	}
 	if singletonHint("some unrelated chrome noise", "/profiles/work") != "" {
 		t.Errorf("unrelated stderr should not produce a singleton hint")
+	}
+}
+
+// The roots follow every absolute home — $HOME and the account's — and never
+// a relative $HOME, which would name a directory under the working directory
+// while the user's browser keeps its profile in the real home.
+func TestRealChromeRootsFollowAbsoluteHomesOnly(t *testing.T) {
+	roots := realChromeProfileRoots("darwin", func(string) string { return "" }, []string{"/h1", "/h2"})
+	for _, want := range []string{
+		filepath.Join("/h1", "Library", "Application Support", "Google", "Chrome"),
+		filepath.Join("/h2", "Library", "Application Support", "Google", "Chrome"),
+	} {
+		if !slices.Contains(roots, want) {
+			t.Errorf("roots %q lack %s", roots, want)
+		}
+	}
+	t.Setenv("HOME", "relhome")
+	for _, h := range userHomes() {
+		if !filepath.IsAbs(h) {
+			t.Errorf("userHomes() = %q holds a relative home", userHomes())
+		}
+	}
+	other := t.TempDir()
+	t.Setenv("HOME", other)
+	if homes := userHomes(); !slices.Contains(homes, filepath.Clean(other)) {
+		t.Errorf("userHomes() = %q lacks $HOME %s", homes, other)
 	}
 }

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"image/color"
 	"os"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -598,7 +600,123 @@ func TestARelativeTempDirStillWorks(t *testing.T) {
 		t.Errorf("an ordinary upload with a relative TMPDIR: %v", err)
 	}
 	var te *toolerr.Error
-	if _, err := inputUnder(base, filepath.Join("tmp", "chrome-pilot-mcp-profile-1", "Default", "Cookies"), r); !errors.As(err, &te) || te.Code != toolerr.CodePathNotAllowed {
-		t.Errorf("a throwaway profile's cookies with a relative TMPDIR: %v, want %s", err, toolerr.CodePathNotAllowed)
+	_, err := inputUnder(base, filepath.Join("tmp", "chrome-pilot-mcp-profile-1", "Default", "Cookies"), r)
+	if !errors.As(err, &te) || te.Code != toolerr.CodePathNotAllowed || te.Details["reason"] != "server_dir" {
+		t.Errorf("a throwaway profile's cookies with a relative TMPDIR: %v, want %s (server_dir)", err, toolerr.CodePathNotAllowed)
+	}
+}
+
+// The same chain on the default output folder, written only at stop: nothing
+// but writeUnder judges screencasts/, so this is the case that pins it.
+func TestALinkChainThroughACredentialDirectoryIsRefusedAtStop(t *testing.T) {
+	home := resolvedTempDir(t)
+	t.Setenv("HOME", home)
+	work := filepath.Join(home, ".config")
+	end := filepath.Join(work, "end")
+	for _, d := range []string{filepath.Join(work, "gcloud", "sub"), end} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join("..", "..", "end"), filepath.Join(work, "gcloud", "sub", "hop")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("gcloud", "sub", "hop"), filepath.Join(work, "screencasts")); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "about:blank")
+	m := newTestManager(t, Config{}, f)
+	if _, err := callTool(t, m.screencastStart, `{"work_dir":`+quote(work)+`}`); err != nil {
+		t.Fatalf("screencast_start: %v", err)
+	}
+	feedOneFrame(t, m, f)
+	_, err := callTool(t, m.screencastStop, `{}`)
+	wantPathRefused(t, err, "sensitive_path")
+	wantEmpty(t, end)
+}
+
+// Outside work_dir an upload says nothing about existence: an existing file
+// and a missing one are both refused as outside, before any "no such file".
+func TestAnUploadOutsideWorkDirSaysNothingAboutExistence(t *testing.T) {
+	t.Setenv("HOME", resolvedTempDir(t))
+	work := resolvedTempDir(t)
+	other := resolvedTempDir(t)
+	mustWrite(t, filepath.Join(other, "tax-2025.pdf"), "x")
+	r := new(Manager).resolver()
+	for _, p := range []string{
+		filepath.Join(other, "tax-2025.pdf"), filepath.Join(other, "tax-2024.pdf"),
+		filepath.Join(other, "missing-dir", "tax-2024.pdf"),
+	} {
+		var te *toolerr.Error
+		_, err := inputUnder(work, p, r)
+		if !errors.As(err, &te) || te.Code != toolerr.CodePathNotAllowed || te.Details["reason"] != "outside_work_dir" {
+			t.Errorf("inputUnder(%s) = %v, want %s (outside_work_dir)", p, err, toolerr.CodePathNotAllowed)
+		}
+	}
+	// Inside work_dir a missing file is still reported missing.
+	var te *toolerr.Error
+	if _, err := inputUnder(work, "absent.pdf", r); !errors.As(err, &te) || te.Code != toolerr.CodeInvalidArguments {
+		t.Errorf("a missing file inside work_dir: %v, want %s", err, toolerr.CodeInvalidArguments)
+	}
+}
+
+// A relative $HOME moves this server's own directory with it — that is where
+// this process keeps it — but not the user's own Chrome, which does not
+// follow this process: its roots stay under the account's home.
+func TestARelativeHomeStillProtectsTheUsersChrome(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the Chrome roots checked here are the darwin ones")
+	}
+	acct, err := user.Current()
+	if err != nil || !filepath.IsAbs(acct.HomeDir) {
+		t.Skipf("no account home: %v", err)
+	}
+	base := resolvedTempDir(t)
+	t.Chdir(base)
+	t.Setenv("HOME", "relhome")
+	want := filepath.Join(acct.HomeDir, "Library", "Application Support", "Google", "Chrome")
+	found := false
+	for _, pl := range new(Manager).protectedPlaces() {
+		if pl.Reason != "browser_profile" {
+			continue
+		}
+		if pl.Path == want {
+			found = true
+		}
+		if strings.HasPrefix(pl.Path, base+string(filepath.Separator)) {
+			t.Errorf("a Chrome root under the working directory: %s", pl.Path)
+		}
+	}
+	if !found {
+		t.Errorf("the account's own Chrome root %s is not protected", want)
+	}
+}
+
+// The chain again, its end not there yet: only the check before anything is
+// created can refuse it, and it must — the refusal is the credential hop, not
+// a failure to create through the link.
+func TestALinkChainToAMissingEndIsRefusedBeforeCreating(t *testing.T) {
+	home := resolvedTempDir(t)
+	t.Setenv("HOME", home)
+	work := filepath.Join(home, ".config")
+	if err := os.MkdirAll(filepath.Join(work, "gcloud", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	end := filepath.Join(work, "end")
+	if err := os.Symlink(end, filepath.Join(work, "gcloud", "sub", "hop")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("gcloud", "sub", "hop"), filepath.Join(work, "screenshots")); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeChrome(t, "https://example.com/")
+	f.overrides["Page.captureScreenshot"] = func(string, map[string]any) (any, string) {
+		return map[string]any{"data": base64.StdEncoding.EncodeToString([]byte("PNG"))}, ""
+	}
+	m := newTestManager(t, Config{}, f)
+	_, err := callTool(t, m.takeScreenshot, `{"work_dir":`+quote(work)+`}`)
+	wantPathRefused(t, err, "sensitive_path")
+	if _, err := os.Lstat(end); err == nil {
+		t.Errorf("%s was created before the refusal", end)
 	}
 }
