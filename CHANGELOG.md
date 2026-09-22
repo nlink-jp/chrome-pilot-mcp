@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- A path's place is nlink-jp/pathguard v0.3.0's `Where`, the end of its walk.
+  It was the last of pathguard's forms, which is a middle hop when a chain of
+  links comes back to a spelling it already passed.
+
 ## [0.10.0] - 2026-09-22
 
 ### Security

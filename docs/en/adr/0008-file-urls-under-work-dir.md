@@ -104,6 +104,14 @@ complicate the code chasing perfection).
 | Grants of a tab closed other than by `close_page` stay in the table | Session ids are never reused; what stays is a little memory |
 | Workers a granted HTML file starts are not measured | The interception sits on page sessions; a `file://` page cannot `fetch` another file (measured) |
 
+## Amendment (2026-09-22, v0.10.1): the place is pathguard's `Where`
+
+A path's place was the last of pathguard's forms (`Forms`); the forms are de-duplicated, so when a chain of links
+comes back to an earlier spelling the last one is a middle hop, not the end (recorded as a known limit). pathguard
+v0.3.0's `Where` returns the end of the walk, and the place is now that. A path whose chain of links does not end
+stays as given, and the floor refuses it. The other limits are recorded, and accepted, under "Limits" in pathguard's
+README.
+
 ## References
 
 - ADR-0001 (host allow/block lists), ADR-0006 (writes and uploads stay under `work_dir`), ADR-0007 (pathguard)

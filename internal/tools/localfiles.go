@@ -106,15 +106,14 @@ func localPath(rawURL string) (path string, local bool, err error) {
 	return filepath.Clean(p), true, nil
 }
 
-// place is where p is, or would be: the last of pathguard's forms — every
+// place is where p is, or would be: the end of pathguard's walk — every
 // link followed, a dangling one by its target — so whether the file exists
 // never changes the answer.
 func place(p string) string {
-	f := pathguard.Forms(p)
-	if len(f) == 0 {
-		return p
+	if end, ok := pathguard.Where(p); ok {
+		return end
 	}
-	return f[len(f)-1]
+	return p
 }
 
 // judgeLocal is the one judgement for a local file: its place lies inside
