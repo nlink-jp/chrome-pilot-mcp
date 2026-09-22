@@ -13,7 +13,7 @@ import (
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/toolerr"
 )
 
-// The layer these tests observe is resolveWorkDir — the single function every
+// The layer these tests observe is Manager.workDir — the single function every
 // file-writing tool calls to turn a `work_dir` argument into a validated
 // directory, denied list and all. The resolver's own denial mechanics are
 // covered a layer below, in internal/workdir. A test that built its own
@@ -25,17 +25,17 @@ import (
 // reader needs, not "nil is not a structured error".
 func wantDenied(t *testing.T, dir string) {
 	t.Helper()
-	_, err := resolveWorkDir(context.Background(), dir)
+	_, err := new(Manager).workDir(context.Background(), dir)
 	if err == nil {
-		t.Fatalf("resolveWorkDir(%q) accepted the server's own directory; want %s",
+		t.Fatalf("workDir(%q) accepted the server's own directory; want %s",
 			dir, toolerr.CodeWorkDirDenied)
 	}
 	var te *toolerr.Error
 	if !errors.As(err, &te) {
-		t.Fatalf("resolveWorkDir(%q) = %v, which is not a structured tool error", dir, err)
+		t.Fatalf("workDir(%q) = %v, which is not a structured tool error", dir, err)
 	}
 	if te.Code != toolerr.CodeWorkDirDenied {
-		t.Errorf("resolveWorkDir(%q) = %s, want %s", dir, te.Code, toolerr.CodeWorkDirDenied)
+		t.Errorf("workDir(%q) = %s, want %s", dir, te.Code, toolerr.CodeWorkDirDenied)
 	}
 }
 
@@ -88,15 +88,15 @@ func TestWorkDirRefusesManagedProfilesDir(t *testing.T) {
 func TestWorkDirAcceptsOrdinaryDir(t *testing.T) {
 	serverDir(t)
 	ordinary := t.TempDir()
-	got, err := resolveWorkDir(context.Background(), ordinary)
+	got, err := new(Manager).workDir(context.Background(), ordinary)
 	if err != nil {
-		t.Fatalf("resolveWorkDir(%q) = %v, want accepted", ordinary, err)
+		t.Fatalf("workDir(%q) = %v, want accepted", ordinary, err)
 	}
 	want, err := filepath.EvalSymlinks(ordinary)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
-		t.Errorf("resolveWorkDir = %q, want the symlink-resolved %q", got, want)
+		t.Errorf("workDir = %q, want the symlink-resolved %q", got, want)
 	}
 }

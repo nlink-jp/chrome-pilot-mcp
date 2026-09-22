@@ -5,7 +5,7 @@ Design background: [RFP](docs/en/chrome-pilot-mcp-rfp.md) and the
 
 [日本語](README.ja.md)
 
-A zero-dependency Chrome automation MCP server. It reimplements the core
+A Chrome automation MCP server with no third-party dependencies. It reimplements the core
 automation surface of Google's
 [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)
 as a single Go binary that speaks the Chrome DevTools Protocol (CDP)
@@ -18,7 +18,9 @@ npm dependency tree and downloads browser binaries at runtime. chrome-pilot-mcp
 is built for environments where that is unacceptable:
 
 - **Single static binary** — nothing is fetched at install or run time
-- **Zero Go module dependencies** — `go.mod` has no `require`; the WebSocket
+- **No third-party Go modules** — `go.mod` requires only
+  [nlink-jp/pathguard](https://github.com/nlink-jp/pathguard), this
+  organization's path-safety module (standard library only); the WebSocket
   client (RFC 6455, localhost/plaintext only) is implemented in-house
 - **Drives your installed Chrome** — launches it with a dedicated profile
   bound to `127.0.0.1`, or attaches to an existing debugging endpoint
@@ -90,9 +92,12 @@ Notable behaviors:
   (relative to it, or absolute inside it) — a page can send what it is given
   anywhere, so copy the file into your work directory first. A path outside,
   a symlink leading out, a credential or agent-control file (`~/.ssh`, `.env`
-  and the like), anything in this server's own directory, in the profile of the
-  Chrome it is driving or in your own Chrome profile, and a directory are
-  refused before Chrome is asked for anything. The page is given the file's
+  and the like) — and, since a page can send a file anywhere, a file named as a
+  secret (`id_rsa`, `credentials.json`, `*service-account*.json`) or lying in a
+  credential directory wherever it sits — anything in this server's own
+  directory, in the profile of the Chrome it is driving or in your own Chrome
+  profile, and a directory are refused before Chrome is asked for anything,
+  under any spelling. The page is given the file's
   real path — for a symlink, its target, whose name the page sees — and the
   result's `uploaded` reports that path.
 - `drag` is mouse-event based; HTML5 dragstart/drop-based UIs are not

@@ -442,7 +442,7 @@ func (m *Manager) uploadFile(ctx context.Context, raw json.RawMessage) (any, err
 	if err != nil {
 		return nil, err
 	}
-	path, err := inputUnder(wsRoot, args.FilePath, m.protectedDirs())
+	path, err := inputUnder(wsRoot, args.FilePath, m.resolver())
 	if err != nil {
 		return nil, err
 	}

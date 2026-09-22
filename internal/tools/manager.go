@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nlink-jp/pathguard"
+
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/browser"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/cdp"
 	"github.com/nlink-jp/chrome-pilot-mcp/internal/config"
@@ -69,7 +71,7 @@ type Manager struct {
 	client *cdp.Client
 	br     *browser.Browser
 	// profileDir is the launched Chrome's profile directory, kept from the
-	// moment of connecting so protectedDirs can name it (ADR-0006); "" when
+	// moment of connecting so protectedPlaces can name it (ADR-0006); "" when
 	// attached.
 	profileDir string
 	pages      []*pageState
@@ -399,78 +401,56 @@ func (m *Manager) selectedPage(ctx context.Context) (*pageState, error) {
 // the caller, so the caller names it on every call (ADR-0005; organization
 // ADR-021).
 
-// resolveWorkDir resolves and validates the caller's work directory for one
-// call: the work_dir argument, else the runtime hint in the request's _meta,
-// else an error (organization ADR-021 §2). There is no server-owned default —
-// a destination this server picked is one the caller can read back only by
-// coincidence.
+// workDir resolves and validates the caller's work directory for one call:
+// the work_dir argument, else the runtime hint in the request's _meta, else
+// an error (organization ADR-021 §2). It is refused inside any protected place
+// (protectedPlaces), by file identity and by folded name — this disk folds
+// case — which is pathguard's judgement (ADR-0007).
 //
-// Every tool that writes a file goes through here, and this is the only place
-// the resolver is built, so a tool added later cannot arrive without the
-// denied list.
-func resolveWorkDir(ctx context.Context, arg string) (string, error) {
-	return workDirResolver().Resolve(ctx, arg)
-}
-
-// workDir is resolveWorkDir plus the identity check: a work_dir inside a
-// protected directory (protectedDirs) is refused with work_dir_denied, whatever
-// spelling reached it — resolveWorkDir's own list compares names, and this
-// disk folds case. Every tool that takes work_dir calls this.
+// Every tool that takes work_dir goes through here, and the resolver is built
+// only in resolver, so a tool added later cannot arrive without the places.
 func (m *Manager) workDir(ctx context.Context, arg string) (string, error) {
-	dir, err := resolveWorkDir(ctx, arg)
-	if err != nil {
-		return "", err
-	}
-	if _, why := refusedLocation(m.protectedDirs(), dir); why != "" {
-		return "", toolerr.Newf(toolerr.CodeWorkDirDenied, "work_dir %q is refused: %s", dir, why).
-			WithDetails(map[string]any{"work_dir": dir})
-	}
-	return dir, nil
+	return m.resolver().Resolve(ctx, arg)
 }
 
-// protectedDirs are the directories no file argument and no write may reach
+// resolver builds the resolver for this moment: the places change while the
+// server runs (a browser is launched, a throwaway profile appears), and
+// nothing is cached.
+func (m *Manager) resolver() workdir.Resolver {
+	return workdir.NewResolverFor(m.protectedPlaces()...)
+}
+
+// protectedPlaces are the places no work_dir, file argument or write may reach
 // (ADR-0006): this server's own directory, the profile of the Chrome it is
-// driving — a throwaway one lives under the temp directory, which is a
-// legitimate work_dir — and the user's own Chrome profiles.
-func (m *Manager) protectedDirs() []protectedDir {
-	var out []protectedDir
+// driving, every throwaway profile in the temp directory, and the user's own
+// Chrome profiles.
+func (m *Manager) protectedPlaces() []pathguard.Place {
+	place := func(dir, reason, why string) pathguard.Place {
+		return pathguard.Place{Path: dir, Kind: pathguard.Protected, Reason: reason, Why: why}
+	}
+	var out []pathguard.Place
 	for _, d := range serverOwnedDirs() {
-		out = append(out, protectedDir{d, "server_dir",
-			"it is inside this server's own directory " + d + " (config.toml and the managed browser profiles)"})
+		out = append(out, place(d, "server_dir",
+			"it is inside this server's own directory "+d+" (config.toml and the managed browser profiles)"))
 	}
 	m.mu.Lock()
 	profile := m.profileDir
 	m.mu.Unlock()
 	if d := profile; d != "" {
-		out = append(out, protectedDir{d, "server_dir", "it is inside the profile of the browser this server is driving, " + d})
+		out = append(out, place(d, "server_dir", "it is inside the profile of the browser this server is driving, "+d))
 	}
 	// Every throwaway profile in the temp directory, not only this process's:
 	// each runtime runs its own server, and a killed one leaves its profile
 	// behind, still holding cookies.
 	if others, err := filepath.Glob(filepath.Join(os.TempDir(), "chrome-pilot-mcp-profile-*")); err == nil {
 		for _, d := range others {
-			out = append(out, protectedDir{d, "server_dir", "it is inside the throwaway profile of a chrome-pilot-mcp browser, " + d})
+			out = append(out, place(d, "server_dir", "it is inside the throwaway profile of a chrome-pilot-mcp browser, "+d))
 		}
 	}
 	for _, d := range browser.RealChromeProfileRoots() {
-		out = append(out, protectedDir{d, "browser_profile", "it is inside your own Chrome profile, " + d})
+		out = append(out, place(d, "browser_profile", "it is inside your own Chrome profile, "+d))
 	}
 	return out
-}
-
-// workDirResolver builds the resolver, denying this server's own directory.
-//
-// A work directory is the caller's, not ours (organization ADR-021 §4: "not a
-// system location … and not the server's own config or state directory" →
-// `work_dir_denied`). This one matters more than most: config.Dir holds both
-// config.toml — which can name an executable to launch and widen the ADR-0001
-// host limits — and profiles/, the managed browser profiles, which accumulate
-// cookies and logged-in sessions. Without the denial a caller could name that
-// tree as its work_dir and have the server drop screenshots and PDFs into a
-// live browser profile, or over the config that governs what it may do at
-// all, on a model's say-so.
-func workDirResolver() workdir.Resolver {
-	return workdir.Resolver{Denied: serverOwnedDirs()}
 }
 
 // serverOwnedDirs lists this server's own config and state directories.

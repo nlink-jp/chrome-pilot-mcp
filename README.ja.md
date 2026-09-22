@@ -5,7 +5,7 @@
 
 [English](README.md)
 
-依存ゼロの Chrome 自動化 MCP サーバー。Google の
+サードパーティの依存を持たない Chrome 自動化 MCP サーバー。Google の
 [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)
 のコア自動化機能を、Chrome DevTools Protocol (CDP) を直接話す Go 単一
 バイナリとして再実装します — npm も npx も puppeteer も、外部 Go module
@@ -18,8 +18,9 @@
 chrome-pilot-mcp はそれが許容できない環境のために作られています:
 
 - **単一静的バイナリ** — インストール時も実行時も外部から何も取得しない
-- **Go module 依存ゼロ** — `go.mod` に `require` なし。WebSocket クライアント
-  (RFC 6455、localhost・平文限定) は自前実装
+- **サードパーティの Go module なし** — `go.mod` が要求するのは、この組織のパス安全判定
+  モジュール [nlink-jp/pathguard](https://github.com/nlink-jp/pathguard)(標準ライブラリのみ)
+  だけ。WebSocket クライアント (RFC 6455、localhost・平文限定) は自前実装
 - **インストール済み Chrome を操縦** — 専用プロファイル + `127.0.0.1` bind で
   起動、または既存の debugging endpoint にアタッチ
 
@@ -91,9 +92,11 @@ chrome-pilot-mcp はそれが許容できない環境のために作られてい
   (`work_dir` からの相対パスか、その中を指す絶対パス)。ページは渡されたものを
   どこへでも送れるため、先にファイルを作業ディレクトリへコピーしてください。外を
   指すパス、外へ向かうシンボリックリンク、資格情報・エージェント制御ファイル
-  (`~/.ssh`、`.env` など)、このサーバー自身のディレクトリ・操作中の Chrome のプロファイル・
-  あなた自身の Chrome のプロファイルの中のもの、ディレクトリは、
-  Chrome に何かを頼む前に拒否します。ページに渡すのはファイルの実体のパスで、
+  (`~/.ssh`、`.env` など) —— ページはファイルをどこへでも送れるので、秘密の名前を持つ
+  ファイル(`id_rsa`、`credentials.json`、`*service-account*.json`)や、どこにあっても資格情報の
+  ディレクトリの中のファイルも —— 、このサーバー自身のディレクトリ・操作中の Chrome の
+  プロファイル・あなた自身の Chrome のプロファイルの中のもの、ディレクトリは、どんな綴りで
+  渡しても Chrome に何かを頼む前に拒否します。ページに渡すのはファイルの実体のパスで、
   シンボリックリンクならリンク先です(ページに見えるのもリンク先の名前)。結果の
   `uploaded` はそのパスを返します。
 - `drag` はマウスイベントベースです (HTML5 dragstart/drop ベースの UI は

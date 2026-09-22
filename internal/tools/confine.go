@@ -27,8 +27,12 @@ import (
 //     the next secret file is not on it.
 //
 // Inside work_dir two kinds of place are still refused, in both directions:
-// the credential and agent-control blacklist, and this server's own
-// directory. A work_dir may legitimately be a parent of either — ~/.config,
+// the credential and agent-control places, and this server's own directories
+// (its config, the profile of the browser it drives, throwaway profiles, the
+// user's own Chrome profiles). Both are nlink-jp/pathguard's judgement, by
+// file identity and by folded name (ADR-0007): writes and a work_dir under its
+// Local policy, an upload — which leaves the machine — under its Outbound
+// policy. A work_dir may legitimately be a parent of either — ~/.config,
 // ~/Library/Application Support — and the files under it are then the
 // managed browser profiles' cookies, or config.toml.
 
@@ -43,7 +47,7 @@ import (
 // that named it. The write itself then goes through an os.Root opened on
 // work_dir (writeUnder), which refuses such a link again if one appears in
 // between.
-func outputUnder(wsRoot, filePath string, protected []protectedDir) (string, error) {
+func outputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 	raw := filepath.Clean(filePath)
 	if !filepath.IsAbs(raw) {
 		raw = filepath.Join(wsRoot, raw)
@@ -56,7 +60,7 @@ func outputUnder(wsRoot, filePath string, protected []protectedDir) (string, err
 				"pass a path relative to it, or leave filePath out", filePath, wsRoot).
 			WithDetails(map[string]any{"reason": "outside_work_dir", "filePath": filePath, "work_dir": wsRoot})
 	}
-	if reason, why := refusedLocation(protected, raw, real); reason != "" {
+	if reason, why := r.LocalPath(raw, real); why != "" {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
 			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
 	}
@@ -72,7 +76,7 @@ func outputUnder(wsRoot, filePath string, protected []protectedDir) (string, err
 // What this cannot close: Chrome is given a path and opens the file later, so
 // a file swapped for a link after this check is read as the link's target.
 // DOM.setFileInputFiles takes paths, not open files.
-func inputUnder(wsRoot, filePath string, protected []protectedDir) (string, error) {
+func inputUnder(wsRoot, filePath string, r workdir.Resolver) (string, error) {
 	raw := filePath
 	if !filepath.IsAbs(raw) {
 		raw = filepath.Join(wsRoot, raw)
@@ -82,7 +86,7 @@ func inputUnder(wsRoot, filePath string, protected []protectedDir) (string, erro
 	if err != nil {
 		return "", toolerr.Newf(toolerr.CodeInvalidArguments, "filePath: %v", err)
 	}
-	if reason, why := refusedLocation(protected, raw, real); reason != "" {
+	if reason, why := r.OutboundPath(raw, real); why != "" {
 		return "", toolerr.Newf(toolerr.CodePathNotAllowed, "filePath %q is refused: %s", filePath, why).
 			WithDetails(map[string]any{"reason": reason, "filePath": filePath})
 	}
@@ -103,54 +107,6 @@ func inputUnder(wsRoot, filePath string, protected []protectedDir) (string, erro
 	return real, nil
 }
 
-// protectedDir is a directory no file argument and no write may reach, with
-// the details.reason and sentence a refusal gives.
-type protectedDir struct {
-	path, reason, why string
-}
-
-// refusedLocation reports why a file under work_dir is still refused — its
-// details.reason and a sentence — or two empty strings. paths are the forms
-// of one path (as given and resolved). The credential blacklist is compared
-// by name (workdir.Sensitive, shared by the fleet); the protected
-// directories by identity.
-func refusedLocation(protected []protectedDir, paths ...string) (reason, why string) {
-	if why := workdir.Sensitive(paths...); why != "" {
-		return "sensitive_path", why
-	}
-	for _, d := range protected {
-		own, err := os.Stat(d.path)
-		if err != nil {
-			continue // not there: nothing to reach
-		}
-		for _, p := range paths {
-			if insideByIdentity(p, own) {
-				return d.reason, d.why
-			}
-		}
-	}
-	return "", ""
-}
-
-// insideByIdentity reports whether p, or an existing directory above it, is
-// the directory dir describes — compared by file identity, not by name. Names
-// mislead here: APFS is case-insensitive by default, so CHROME-PILOT-MCP and
-// chrome-pilot-mcp are one directory under two spellings, and a string
-// comparison passes the spelling it was not written for (the second review of
-// ADR-0006 got a profile's Cookies uploaded that way).
-func insideByIdentity(p string, dir os.FileInfo) bool {
-	for cur := p; ; {
-		if fi, err := os.Stat(cur); err == nil && os.SameFile(fi, dir) {
-			return true
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return false
-		}
-		cur = parent
-	}
-}
-
 // writeUnder writes a file at rel under root, creating its directory.
 //
 //   - root refuses any path, and any symlink along it, that leaves the
@@ -166,7 +122,7 @@ func insideByIdentity(p string, dir os.FileInfo) bool {
 //
 // A refusal comes back as a *toolerr.Error; anything else is an I/O failure
 // for the caller to report (writeFailure).
-func writeUnder(root *os.Root, rel string, protected []protectedDir, write func(io.Writer) error) error {
+func writeUnder(root *os.Root, rel string, r workdir.Resolver, write func(io.Writer) error) error {
 	dir := filepath.Dir(rel)
 	refuse := func(reason, why string) error {
 		return toolerr.Newf(toolerr.CodePathNotAllowed, "%s is refused: %s", rel, why).
@@ -178,7 +134,7 @@ func writeUnder(root *os.Root, rel string, protected []protectedDir, write func(
 	if !ok {
 		return refuse("outside_work_dir", "a symbolic link on the output path cannot be followed safely")
 	}
-	if reason, why := refusedLocation(protected, where); reason != "" {
+	if reason, why := r.LocalPath(where, where); why != "" {
 		return refuse(reason, why)
 	}
 	if dir != "." {
@@ -199,7 +155,7 @@ func writeUnder(root *os.Root, rel string, protected []protectedDir, write func(
 	if rerr != nil || perr != nil || !os.SameFile(viaRoot, viaPath) {
 		return refuse("outside_work_dir", "the work directory is no longer where it was when the call began")
 	}
-	if reason, why := refusedLocation(protected, real); reason != "" {
+	if reason, why := r.LocalPath(real, real); why != "" {
 		return refuse(reason, why)
 	}
 	tmp, f, err := createExclusive(root, dir)

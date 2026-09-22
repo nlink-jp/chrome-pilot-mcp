@@ -4,11 +4,13 @@ Read AGENTS.md for project summary, build commands, and structure.
 
 ## Non-negotiable project rules
 
-1. **Zero external dependencies.** `go.mod` must never gain a `require`
-   line. No cobra, no websocket libraries, no CDP libraries (chromedp etc.),
-   no image libraries. stdlib only — supply-chain risk elimination is this
-   project's reason to exist. If a need seems to require a dependency,
-   stop and discuss instead of adding it.
+1. **No third-party dependencies.** `go.mod` may require only modules of the
+   nlink-jp organization, which hold the same rule themselves (today
+   `nlink-jp/pathguard`, standard library only). No cobra, no websocket
+   libraries, no CDP libraries (chromedp etc.), no image libraries —
+   supply-chain risk elimination is this project's reason to exist. If a need
+   seems to require any other dependency, stop and discuss instead of adding
+   it.
 2. **CDP stable domains only**: Page / DOM / Runtime / Input / Network /
    Accessibility / Emulation. No experimental domains.
 3. **Nothing is ever downloaded at runtime.** The binary launches or

@@ -1,6 +1,6 @@
 # ADR-0006: 録画ファイルもアップロードするファイルも `work_dir` の中に限る
 
-- Status: Accepted
+- Status: Accepted —— 拒む場所の判定は [ADR-0007](0007-pathguard.ja.md)（nlink-jp/pathguard）で置き換えた
 - Date: 2026-09-22
 - Amends: [ADR-0005](0005-work-dir-contract.ja.md)
 

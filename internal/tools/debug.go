@@ -153,7 +153,7 @@ func (m *Manager) takeScreenshot(ctx context.Context, raw json.RawMessage) (any,
 		return nil, toolerr.Newf(toolerr.CodeWorkspaceFailed, "open work_dir: %v", err)
 	}
 	defer func() { _ = root.Close() }()
-	if err := writeUnder(root, rel, m.protectedDirs(), func(w io.Writer) error { _, err := w.Write(img); return err }); err != nil {
+	if err := writeUnder(root, rel, m.resolver(), func(w io.Writer) error { _, err := w.Write(img); return err }); err != nil {
 		return nil, writeFailure(err, "write screenshot")
 	}
 

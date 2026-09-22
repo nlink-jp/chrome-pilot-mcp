@@ -1,6 +1,7 @@
 # ADR-0006: The screencast file and the uploaded file both stay under `work_dir`
 
-- Status: Accepted
+- Status: Accepted — the judgement of the refused places is replaced by [ADR-0007](0007-pathguard.md)
+  (nlink-jp/pathguard)
 - Date: 2026-09-22
 - Amends: [ADR-0005](0005-work-dir-contract.md)
 

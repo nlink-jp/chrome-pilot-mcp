@@ -458,3 +458,44 @@ func TestADanglingLinkThatClimbsIsRefused(t *testing.T) {
 	_, err := callTool(t, m.screencastStart, `{"filePath":"out/x.gif","work_dir":`+quote(work)+`}`)
 	wantPathRefused(t, err, "outside_work_dir")
 }
+
+// An upload leaves the machine, so it is judged by the Outbound policy: a file
+// named as a secret (id_rsa, .env) or lying in a credential directory is
+// refused even inside work_dir and outside the home directory — the page can
+// send it anywhere. A write stays under the Local policy, which leaves such a
+// name alone outside the home directory.
+func TestAnUploadIsJudgedAsLeavingTheMachine(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := new(Manager).resolver()
+	for _, rel := range []string{"id_rsa", "evidence/home/bob/.ssh/known_hosts", "service-account.json"} {
+		p := filepath.Join(work, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var te *toolerr.Error
+		if _, err := inputUnder(work, rel, r); !errors.As(err, &te) || te.Code != toolerr.CodePathNotAllowed {
+			t.Errorf("inputUnder(%s) = %v, want %s", rel, err, toolerr.CodePathNotAllowed)
+		}
+		if _, err := outputUnder(work, rel+".png", r); err != nil {
+			t.Errorf("outputUnder(%s.png) = %v, want accepted", rel, err)
+		}
+	}
+	ok := filepath.Join(work, "report.pdf")
+	if err := os.WriteFile(ok, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inputUnder(work, "report.pdf", r); err != nil {
+		t.Errorf("an ordinary file was refused for upload: %v", err)
+	}
+}

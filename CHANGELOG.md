@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Path judgement moved to [nlink-jp/pathguard](https://github.com/nlink-jp/pathguard)**
+  (ADR-0007): the work-directory check, the refused places for writes and
+  uploads, and the identity comparison this server had of its own
+  (`refusedLocation`, `insideByIdentity`). `go.mod` now requires that one
+  module of this organization, which itself has no dependency; CLAUDE.md's
+  dependency rule says so.
+- `upload_file` is judged as a file that **leaves the machine** (pathguard's
+  Outbound policy): a file named as a secret (`id_rsa`, `credentials.json`,
+  `*service-account*.json`, `.env`) or lying in a credential directory is now
+  refused wherever it sits, even inside `work_dir` and outside your home.
+- Writes and `work_dir` are judged by the Local policy: the real places under
+  your home from the list gem-agent and lagent use are refused (newly
+  `~/.kube`, `~/.config/gh`, `~/.azure`, `~/.terraform.d`, `~/.gemini`,
+  `~/.config/mcp-bridge`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
+  `~/.git-credentials`, `~/.vault-token`, `~/.docker/config.json`,
+  `~/.claude.json`, `~/.bash_history`, `~/.zsh_history`), under every spelling,
+  and wherever a link directly inside one of those directories points. When
+  `$HOME` names another directory than the account's home, both are protected.
+  `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are accepted.
+  When the home directory cannot be determined, every call is refused.
+- `work_dir_denied` carries `reason` in its `details`.
+
 ## [0.8.0] - 2026-09-22
 
 ### Security

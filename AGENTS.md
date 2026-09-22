@@ -5,8 +5,9 @@
 Zero-dependency Chrome automation MCP server in Go. Reimplements the core
 automation surface (27 tools) of ChromeDevTools/chrome-devtools-mcp by
 speaking CDP (Chrome DevTools Protocol) directly over WebSocket. Raison
-d'être: eliminate npm supply-chain risk — single static binary, `go.mod`
-with no `require`, nothing downloaded at runtime.
+d'être: eliminate npm supply-chain risk — single static binary, no third-party
+module in `go.mod` (only nlink-jp/pathguard, itself standard library only),
+nothing downloaded at runtime.
 
 **Current stage: released (the version is in `git tag` and the CHANGELOG), 27/27 tools.** All tools verified E2E
 against real headless Chrome, plus config.toml, profile persistence, and
@@ -54,9 +55,9 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
 
 ## Gotchas
 
-- **Zero-dependency policy is load-bearing.** Never add an external Go module
-  — not cobra, not a websocket library, nothing. stdlib only. This is the
-  project's reason to exist; see CLAUDE.md.
+- **No-third-party-dependency policy is load-bearing.** Never add a Go module
+  from outside the nlink-jp organization — not cobra, not a websocket library,
+  nothing. This is the project's reason to exist; see CLAUDE.md.
 - `cmd/` deliberately deviates from the org's cobra scaffold (stdlib `flag`).
   `--version` and `version` must keep printing identical strings — a test
   pins this, and the shared homebrew formula's `brew test` calls `--version`.
@@ -93,9 +94,12 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   rules live in one place, `internal/tools/confine.go`: `outputUnder` for a
   file this server writes (`screencast_start`'s `filePath`), `inputUnder` for a
   file it hands to a page (`upload_file`, which therefore takes `work_dir`
-  too), `refusedLocation` for what stays refused inside `work_dir` (the
-  credential blacklist and `serverOwnedDirs()` — a `work_dir` may be their
-  parent), and `writeUnder` for every write: temp file + rename through an
+  too), and `writeUnder` for every write. What stays refused inside
+  `work_dir` (the credential and agent-control places and this server's own
+  places — a `work_dir` may be their parent) is nlink-jp/pathguard's judgement
+  (ADR-0007): writes under its Local policy (`Resolver.LocalPath`), an upload
+  under its Outbound policy (`Resolver.OutboundPath`), because a page can send
+  the file anywhere. `writeUnder` is temp file + rename through an
   `os.Root`, so a symlink out of `work_dir` is refused and a hard link is
   replaced, not written through. The screencast opens its root at start and
   holds it to stop. A new tool taking a file path goes through these — a path
@@ -103,17 +107,17 @@ docs/{en,ja}/               # RFP; en has no suffix, ja uses *.ja.md
   in, with tests pinning them. Refusals are `path_not_allowed` with
   `details.reason` (`outside_work_dir` / `sensitive_path` / `server_dir` /
   `browser_profile`).
-  Compare places by identity (`insideByIdentity`, `os.SameFile`), never by
-  name: this disk is case-insensitive, and two reviews in a row got past a
-  name comparison. Temporary files get a random fixed-length name and
-  `O_EXCL` (`createExclusive`). The protected directories are one list,
-  `Manager.protectedDirs` (server dir, the driven Chrome's profile kept in
+  pathguard compares places by file identity and by folded name, never by
+  name alone: this disk is case-insensitive, and two reviews in a row got past
+  a name comparison. Temporary files get a random fixed-length name and
+  `O_EXCL` (`createExclusive`). The protected places are one list,
+  `Manager.protectedPlaces` (server dir, the driven Chrome's profile kept in
   `profileDir` at connect, every `chrome-pilot-mcp-profile-*` in the temp
-  directory, the user's own Chrome roots); tools call
-  `Manager.workDir`, not `resolveWorkDir`, so a `work_dir` inside one is denied
-  by identity too.
-  `workdir.Sensitive` resolves symlinks itself, so passing it the given path
-  alone would still catch a link into `~/.ssh`; pass both forms anyway.
+  directory, the user's own Chrome roots), and `Manager.resolver` builds a
+  resolver from it at the moment of use — the places change while the server
+  runs. Tools call `Manager.workDir`, so a `work_dir` inside one is denied too.
+  The after-creation check in `writeUnder` (the directory the root reached)
+  guards a race no deterministic test can provoke.
 - The initialize `instructions` string is `tools.Instructions`
   (`internal/tools/instructions.go`), set on the server by `cmd/root.go`
   `serve` via `srv.SetInstructions`. It is the first thing a model reads, so
